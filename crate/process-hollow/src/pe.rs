@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::mem::{ size_of, size_of_val, zeroed };
 use std::ptr::null_mut;
 
@@ -7,8 +8,10 @@ use winapi::shared::{
     minwindef::{ LPCVOID, PUCHAR, UCHAR }
 };
 use winapi::um::{
+    fileapi:: { CreateFileA, OPEN_ALWAYS },
+    handleapi::{ INVALID_HANDLE_VALUE },
     memoryapi::{ ReadProcessMemory },
-    winnt::{ IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, LIST_ENTRY, PSTR,
+    winnt::{ GENERIC_READ, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, LIST_ENTRY, PSTR,
              PIMAGE_NT_HEADERS32, PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER
     }
 };
@@ -88,14 +91,17 @@ pub unsafe fn get_image_base_address(h_process: HANDLE) -> LPCVOID {
     peb.ImageBaseAddress
 }
 
-pub unsafe fn x96_check<T>(h_process: HANDLE, image: *const T) -> X96 {
-    let mut buffer = zeroed::<[u8; 0x4000]>();
+pub unsafe fn x96_check_from_remote<T>(h_process: HANDLE, image: *const T) -> X96 {
+    let mut buffer = zeroed::<[u8; 0x2000]>();
 
-    if ReadProcessMemory(h_process, image as *const _, &mut buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { return X96::Unknown }
+    if ReadProcessMemory(h_process, image as *const _, &buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { return X96::Unknown }
 
-    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(&mut buffer as *const _ as *mut _);
+    x96_check(&buffer as *const _ as *mut u8)
+}
 
-    let p_buffer = buffer.as_mut_ptr() as u64 + dos_header.e_lfanew as u64;
+pub unsafe fn x96_check<T>(buffer: *mut T) -> X96 {
+    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *mut _);
+    let p_buffer = buffer as u64 + dos_header.e_lfanew as u64;
     let nt_header = std::ptr::read::<IMAGE_NT_HEADERS>(p_buffer as *mut _);
 
     match nt_header.FileHeader.Machine {
@@ -106,45 +112,49 @@ pub unsafe fn x96_check<T>(h_process: HANDLE, image: *const T) -> X96 {
 }
 
 pub unsafe fn read_remote_image32(h_process: HANDLE, lp_image_base_address: LPCVOID) -> Result<LOADED_IMAGE32> {
-    let mut loaded_image = zeroed::<LOADED_IMAGE32>();
+    let mut buffer = zeroed::<[u8; 0x2000]>();
 
+    // TODO: Error handle
+    if ReadProcessMemory(h_process, lp_image_base_address as *const _, &mut buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { bail!("") }
+
+    Ok(read_image32(&mut buffer as *const _ as *mut _))
+}
+
+pub unsafe fn read_remote_image64(h_process: HANDLE, lp_image_base_address: LPCVOID) -> Result<LOADED_IMAGE64> {
     let mut buffer = zeroed::<[u8; 0x4000]>();
 
     // TODO: Error handle
     if ReadProcessMemory(h_process, lp_image_base_address as *const _, &mut buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { bail!("") }
 
-    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(&mut buffer as *const _ as *mut _);
+    Ok(read_image64(&mut buffer as *const _ as*mut _))
+}
 
-    let p_nt_header = buffer.as_mut_ptr() as usize + dos_header.e_lfanew as usize;
+pub unsafe fn read_image32(buffer: *mut &[u8]) -> LOADED_IMAGE32 {
+    let mut loaded_image = zeroed::<LOADED_IMAGE32>();
+
+    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *const _ as *mut _);
+    let p_nt_header = buffer as usize + dos_header.e_lfanew as usize;
     let nt_header = std::ptr::read::<IMAGE_NT_HEADERS32>(p_nt_header as *mut _);
-
-    let p_sections = buffer.as_mut_ptr() as usize + dos_header.e_lfanew as usize + size_of::<IMAGE_NT_HEADERS32>();
+    let p_sections = buffer as usize + dos_header.e_lfanew as usize + size_of::<IMAGE_NT_HEADERS32>();
 
     loaded_image.FileHeader = p_nt_header as *mut IMAGE_NT_HEADERS32;
     loaded_image.NumberOfSections = nt_header.FileHeader.NumberOfSections as u32;
     loaded_image.Sections = p_sections as *mut _;
 
-    Ok(loaded_image)
+    loaded_image
 }
 
-pub unsafe fn read_remote_image64(h_process: HANDLE, lp_image_base_address: LPCVOID) -> Result<LOADED_IMAGE64> {
+pub unsafe fn read_image64(buffer: *mut &[u8]) -> LOADED_IMAGE64 {
     let mut loaded_image = zeroed::<LOADED_IMAGE64>();
 
-    let mut buffer = zeroed::<[u8; 0x4000]>();
-
-    // TODO: Error handle
-    if ReadProcessMemory(h_process, lp_image_base_address as *const _, &mut buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { bail!("") }
-
-    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(&mut buffer as *const _ as *mut _);
-
-    let p_nt_header = buffer.as_mut_ptr() as usize + dos_header.e_lfanew as usize;
+    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *const _ as *mut _);
+    let p_nt_header = buffer as usize + dos_header.e_lfanew as usize;
     let nt_header = std::ptr::read::<IMAGE_NT_HEADERS64>(p_nt_header as *mut _);
-
-    let p_sections = buffer.as_mut_ptr() as usize + dos_header.e_lfanew as usize + size_of::<IMAGE_NT_HEADERS64>();
+    let p_sections = buffer as usize + dos_header.e_lfanew as usize + size_of::<IMAGE_NT_HEADERS64>();
 
     loaded_image.FileHeader = p_nt_header as *mut IMAGE_NT_HEADERS64;
     loaded_image.NumberOfSections = nt_header.FileHeader.NumberOfSections as u32;
     loaded_image.Sections = p_sections as *mut _;
 
-    Ok(loaded_image)
+    loaded_image
 }
