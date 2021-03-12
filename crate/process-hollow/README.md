@@ -9,7 +9,9 @@ A kind of RunPE technique that hollows out a Process and executes another code.
 ## details
 This code was written in Rust based on [m0n0ph1/Process-Hollowing](https://github.com/m0n0ph1/Process-Hollowing).</br>
 The original checked only Eax at the entry point, so it looked like 32bit.</br>
-I made it compatible with 64bit.
+I made it compatible with 64bit.</br>
+payload-sample.exe is crate/payload-sample.</br>
+But yes, I can't prove that it's not a real bad sample here, so set your own responsibility or put another payload yourself.</br>
 
 ## usage
 `If you are interested in these, you should know how to use them`
