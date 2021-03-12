@@ -5,6 +5,8 @@ Would like to take the magic of a black cat? ε٩(๑> 3 <)۶з
 
 ## Disclaimer
 **Code samples are provided for educational purposes. Adequate defenses can only be built by researching attack techniques available to malicious actors. Using this code against target systems without prior permission is illegal in most jurisdictions. The authors are not liable for any damages from misuse of this information or code**.
+and, Don't ask me about creating specific tools using these techniques (I'll ignore them altogether).</br>
+I don't want to exploit this, I just want to know how it works just curious, I'm not writing code to attack others.
 
 ## What, cat
 First, **still under development, it goes slowly.**</br>
