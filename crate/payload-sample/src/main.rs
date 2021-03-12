@@ -7,8 +7,8 @@ fn main() {
     unsafe {
         MessageBoxW(
             ptr::null_mut(),
-            e("Hello ♡").as_ptr(),
             e("ur machine hacked ฅ( ̳• ε • ̳").as_ptr(),
+            e("Hello ♡").as_ptr(),
             MB_OK
         );
     }
