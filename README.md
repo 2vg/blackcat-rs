@@ -8,6 +8,11 @@ Would like to take the magic of a black cat? ε٩(๑> 3 <)۶з
 and, Don't ask me about creating specific tools using these techniques (I'll ignore them altogether).</br>
 I don't want to exploit this, I just want to know how it works just curious, I'm not writing code to attack others.
 
+## usage
+`If you are interested in these, you should know how to use them`</br>
+If you are interested in this repository, i guess you already know some knowledge.</br>
+So I'll leave the code, but I won't explain them all.
+
 ## What, cat
 First, **still under development, it goes slowly.**</br>
 This repository contains the code I researched and wrote.</br>
@@ -21,13 +26,12 @@ I can write a little code now, but it may still be a script kiddie. because noob
 So I will investigate these, write code, make them work, and try to understand them... as long as my curiosity continues :3</br>
 So, if you can tell me about these, create issues and PRs to grow me♡
 
-# Okey, but why not **C**, why **Rust**?
+## Okey, but why not **C**, why **Rust**?
 Good question, but the answer to this is because I like Rust. That's all.
 
-## usage
-`If you are interested in these, you should know how to use them`</br>
-If you are interested in this repository, i guess you already know some knowledge.</br>
-So I'll leave the code, but I won't explain them all.
+## Plans?
+see #Todo section.</br>
+i will update that list, when i got other plans, other ideas.
 
 ## Contribute
 WELCOME ANYTIME
@@ -35,14 +39,21 @@ WELCOME ANYTIME
 ## Todo
 
 - [ ] hollow (currently forcused)
-- [ ] other 2 or 3 injection methods
+- [ ] other 2 or 3 injection methods (yes, for crypter)
+- [ ] create simple crypter ..1
 - [ ] reverse tcp with e2e connection
 - [ ] r\*\*\*\*it
 - [ ] research c\*\*\*\*t s\*\*\*\*e
 - [ ] research b\*\*\*k dll
 - [ ] w*n hook
-- [ ] km ..1
+- [ ] km ..2
 
 .. etc.
 
-> 1: low priority. cuz biding is not good for now. but i will work about this in the furute, absolutely.
+> 1: In fact I started learning for create Crypter, when i was more newbie programmer.</br>
+> ___It's easy to avoid scan time detection, but the runtime detection avoiding is very difficult.</br>
+> ___I've looked at some methods that might avoid runtime detection, but they require a very high level of knowledge.</br>
+> ___But I will work on this after I grow up a little more.</br>
+> ___Because they are part of TODO: 3</br>
+>
+> 2: low priority. cuz biding is not good for now. but i will work about this in the furute, absolutely.</br>
