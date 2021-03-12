@@ -42,7 +42,8 @@ WELCOME ANYTIME
 - [ ] other 2 or 3 injection methods (yes, for crypter)
 - [ ] create simple crypter ..1
 - [ ] reverse tcp with e2e connection
-- [ ] r\*\*\*\*it
+- [ ] create simple rat
+- [ ] r00t\*\*\*
 - [ ] research c\*\*\*\*t s\*\*\*\*e
 - [ ] research b\*\*\*k dll
 - [ ] w*n hook
