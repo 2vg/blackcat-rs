@@ -39,9 +39,11 @@ struct BASE_RELOCATION_BLOCK {
 }
 
 bitfield! {
-    struct BASE_RELOCATION_ENTRY(MSB0 [u8]);
+    struct BASE_RELOCATION_ENTRY([u8]);
     impl Debug;
     u8;
+    //u16, offset, _: 11, 0;
+    //u8, block_type, _: 15, 12;
     u8, block_type, _: 3, 0;
     u16, offset, _: 15, 4;
 }
@@ -90,7 +92,7 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
         bail!("could not unmapping image from dest process. NtUnmapViewOfSection calling was failed.")
     };
 
-    // TODO: Allocate memory for src program
+    // Allocate memory for src program
     let src_nt_header = *src_image.FileHeader;
     let dest_image_memory = VirtualAllocEx(
         hp, dest_image_address as *mut _, src_nt_header.OptionalHeader.SizeOfImage as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
@@ -150,6 +152,8 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
 
             while offset < reloc_data.Size {
                 let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _);
+                println!("base reloc addr: {}", block_header.PageAddress);
+                println!("base reloc size: {}", block_header.BlockSize);
 
                 offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32;
 
@@ -157,10 +161,7 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
                 // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
                 let entry_count = (block_header.BlockSize - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32) / 2;
 
-                let read_test = std::ptr::read::<u8>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _);
-
                 let block_entry = std::slice::from_raw_parts::<[u8; 2]>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _, entry_count as usize);
-                //BASE_RELOCATION_ENTRY::from_bytes(*(block_buffer as *const _ as *mut [u8; 2]));
 
                 for block in block_entry {
                     let block = BASE_RELOCATION_ENTRY(*block);
@@ -172,21 +173,22 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
 
                     if block.block_type() == 0 { continue }
 
-                    /*
                     let field_address = block_header.PageAddress + block.offset() as u32;
-                    println!("page address: {:?}", dest_image_address);
                     println!("page address: 0x{:x}", block_header.PageAddress);
                     println!("field_address: 0x{:x}", field_address);
 
                     let mut d_buffer = zeroed::<u32>();
 
+                    // failed for now, i dont know
+                    /*
                     if ReadProcessMemory(
                         hp, (dest_image_address as u32 + field_address) as LPCVOID,
                         &mut d_buffer as *const _ as *mut _, size_of::<u32>(), null_mut()) != 1 {
                         bail!("could not read process memory.");
                     }
                     println!("d_buffer: {:?}", d_buffer);
-                    d_buffer = d_buffer + delta as u32;*/
+                    d_buffer = d_buffer + delta as u32;
+                    */
                 }
             }
         }
