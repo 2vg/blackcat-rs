@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 ntapi = "0.3.6"
-winapi = { version = "0.3.9", features = ["libloaderapi", "memoryapi", "processthreadsapi", "winbase"] }
+winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "memoryapi", "minwindef", "ntdef", "processthreadsapi", "winbase", "winnt"] }
 anyhow = "1.0.38"
