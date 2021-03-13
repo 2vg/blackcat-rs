@@ -1,4 +1,3 @@
-use std::ffi::CString;
 use std::mem::{ size_of, size_of_val, zeroed };
 use std::ptr::null_mut;
 
@@ -8,10 +7,8 @@ use winapi::shared::{
     minwindef::{ LPCVOID, PUCHAR, UCHAR }
 };
 use winapi::um::{
-    fileapi:: { CreateFileA, OPEN_ALWAYS },
-    handleapi::{ INVALID_HANDLE_VALUE },
     memoryapi::{ ReadProcessMemory },
-    winnt::{ GENERIC_READ, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, LIST_ENTRY, PSTR,
+    winnt::{  IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, LIST_ENTRY, PSTR,
              PIMAGE_NT_HEADERS32, PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER
     }
 };
@@ -92,7 +89,7 @@ pub unsafe fn get_image_base_address(h_process: HANDLE) -> LPCVOID {
 }
 
 pub unsafe fn x96_check_from_remote<T>(h_process: HANDLE, image: *const T) -> X96 {
-    let mut buffer = zeroed::<[u8; 0x2000]>();
+    let buffer = zeroed::<[u8; 0x2000]>();
 
     if ReadProcessMemory(h_process, image as *const _, &buffer as *const _ as *mut _, size_of_val(&buffer), null_mut()) == 0 { return X96::Unknown }
 
