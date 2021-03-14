@@ -23,6 +23,7 @@ for 32bit:
 ![alt](./images/sample.gif)
 
 ## Todo
+- [ ] refactoring code
 - [x] 32bit -> 32bit
 - [x] 64bit -> 64bit
 - [ ] 32bit -> 64bit (currently researching)
