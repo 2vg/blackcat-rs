@@ -22,7 +22,7 @@ But yes, I can't prove that it's not a real bad sample here, so set your own res
 for 32bit to 32bit:
 ![alt](./images/sample_32_to_32.gif)
 
-for 32bit to 64bit:
+for 64bit to 64bit:
 ![alt](./images/sample_64_to_64.gif)
 
 ## Todo
