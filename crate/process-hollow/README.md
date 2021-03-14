@@ -19,6 +19,9 @@ But yes, I can't prove that it's not a real bad sample here, so set your own res
 
 ## Sample
 
+these tested my env:
+Windows10 Home x64 20H2 19042.867
+
 for 32bit to 32bit:
 ![alt](./images/sample_32_to_32.gif)
 
