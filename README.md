@@ -38,8 +38,8 @@ WELCOME ANYTIME
 
 ## Todo
 
-- [ ] hollow (currently forcused)
-- [ ] other 2 or 3 injection methods (yes, for crypter)
+- [x] hollow (almost. 32->64 and 64->32 are not support for now. i will research it.)
+- [ ] other 2 or 3 injection methods (yes, for like a crypter)
 - [ ] create simple crypter ..1
 - [ ] reverse tcp with e2e connection
 - [ ] create simple rat
