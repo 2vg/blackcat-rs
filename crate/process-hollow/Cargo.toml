@@ -8,6 +8,6 @@ edition = "2018"
 
 [dependencies]
 ntapi = "0.3.6"
-winapi = { version = "0.3.9", features = ["fileapi", "handleapi", "memoryapi", "minwindef", "ntdef", "processthreadsapi", "winbase", "winnt"] }
+winapi = { version = "0.3.9", features = ["errhandlingapi", "fileapi", "handleapi", "memoryapi", "minwindef", "ntdef", "processthreadsapi", "winbase", "winnt"] }
 anyhow = "1.0.38"
 bitfield = "0.13.2"
