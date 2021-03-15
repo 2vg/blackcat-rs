@@ -9,5 +9,6 @@ edition = "2018"
 [workspace]
 members = [
     "crate/payload-sample",
+    "crate/process-hide",
     "crate/process-hollow",
 ]
