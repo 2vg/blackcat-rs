@@ -16,7 +16,8 @@ use ntapi::{
   ntpsapi::{
     NtQueryInformationProcess, PROCESS_BASIC_INFORMATION,
   },
-  ntpebteb::{ PEB, PPEB }
+  ntpebteb::{ PEB as PEB64, PPEB as PPEB64 },
+  ntwow64::{ PEB32, PPEB32 }
 };
 
 #[derive(Debug)]
@@ -61,6 +62,16 @@ pub struct LOADED_IMAGE64 {
     pub Links: LIST_ENTRY,
     pub SizeOfImage: ULONG,
 }
+
+#[cfg(target_pointer_width = "64")]
+type PEB = PEB64;
+#[cfg(target_pointer_width = "64")]
+type PPEB = PPEB64;
+
+#[cfg(target_pointer_width = "32")]
+type PEB = PEB32;
+#[cfg(target_pointer_width = "32")]
+type PPEB = PPEB32;
 
 pub unsafe fn find_remote_peb(h_process: HANDLE) -> PPEB {
     let mut pbi = zeroed::<PROCESS_BASIC_INFORMATION>();
