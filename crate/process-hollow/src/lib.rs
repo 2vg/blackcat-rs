@@ -89,10 +89,21 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
 
+    println!("{:?}", dest_image_address);
+    println!("{:?}", new_dest_image_address);
+    println!("0x{:x}", src_nt_header.OptionalHeader.ImageBase);
+
     dest_image_address = new_dest_image_address;
 
     // Delta relocation
-    let delta = dest_image_address as usize - src_nt_header.OptionalHeader.ImageBase as usize;
+    let delta_is_minus = src_nt_header.OptionalHeader.ImageBase as usize > dest_image_address as usize;
+    let delta =
+        if delta_is_minus {
+            src_nt_header.OptionalHeader.ImageBase as usize - dest_image_address as usize
+        }
+        else {
+            dest_image_address as usize - src_nt_header.OptionalHeader.ImageBase as usize
+        };
 
     (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u32;
 
@@ -152,7 +163,13 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
                             bail!("could not read memory from new dest image.")
                     }
 
-                    d_buffer = d_buffer + delta as u64;
+                    d_buffer =
+                        if delta_is_minus {
+                            d_buffer - delta as u64
+                        }
+                        else {
+                            d_buffer + delta as u64
+                        };
 
                     if WriteProcessMemory(
                         hp, (dest_image_address as u64 + field_address) as PVOID,
@@ -238,7 +255,14 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
     dest_image_address = new_dest_image_address;
 
     // Delta relocation
-    let delta = dest_image_address as usize - src_nt_header.OptionalHeader.ImageBase as usize;
+    let delta_is_minus = src_nt_header.OptionalHeader.ImageBase as usize > dest_image_address as usize;
+    let delta =
+        if delta_is_minus {
+            src_nt_header.OptionalHeader.ImageBase as usize - dest_image_address as usize
+        }
+        else {
+            dest_image_address as usize - src_nt_header.OptionalHeader.ImageBase as usize
+        };
 
     (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u64;
 
@@ -298,7 +322,13 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
                             bail!("could not read memory from new dest image.")
                     }
 
-                    d_buffer = d_buffer + delta as u64;
+                    d_buffer =
+                        if delta_is_minus {
+                            d_buffer - delta as u64
+                        }
+                        else {
+                            d_buffer + delta as u64
+                        };
 
                     if WriteProcessMemory(
                         hp, (dest_image_address as u64 + field_address) as PVOID,
