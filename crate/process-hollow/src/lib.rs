@@ -89,10 +89,6 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
 
-    println!("{:?}", dest_image_address);
-    println!("{:?}", new_dest_image_address);
-    println!("0x{:x}", src_nt_header.OptionalHeader.ImageBase);
-
     dest_image_address = new_dest_image_address;
 
     // Delta relocation
