@@ -27,7 +27,9 @@ So I will investigate these, write code, make them work, and try to understand t
 So, if you can tell me about these, create issues and PRs to grow me♡
 
 ## Okey, but why not **C**, why **Rust**?
-Good question, but the answer to this is because I like Rust. That's all.
+Good question, but the answer to this is because I like Rust. That's all.</br>
+Do you say that writing in C doesn't change because there is a lot of unsafe code?</br>
+Of course. But C is not Rust. That's why I don't write it.</br>
 
 ## Plans?
 see #Todo section.</br>
