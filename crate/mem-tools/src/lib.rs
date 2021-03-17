@@ -12,7 +12,7 @@ pub const fn echo_debug() -> (&'static str, u32, u32) {
 
 use std::fs::File;
 use std::ffi::CString;
-use std::mem::{ size_of, zeroed };
+use std::mem::{ size_of, size_of_val, zeroed };
 use std::io::prelude::*;
 use std::ptr::null_mut;
 
@@ -41,22 +41,17 @@ use winapi::um::{
     }
 };
 use ntapi::{
-  ntpsapi::{
-    NtQueryInformationProcess, PROCESS_BASIC_INFORMATION,
-  },
-  ntpebteb::{ PEB, PPEB }
+    ntpsapi::{
+        NtQueryInformationProcess, PROCESS_BASIC_INFORMATION,
+    },
+    ntpebteb::{ PEB, PPEB }
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum X96 {
     X86,
     X64,
     Unknown
-}
-
-pub enum XIMAGE {
-    X86(LOADED_IMAGE32),
-    X64(LOADED_IMAGE64),
 }
 
 #[repr(C)]
@@ -125,9 +120,136 @@ bitfield! {
     u8, block_type, _: 15, 12;
 }
 
+// ".reloc" binary
+const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
+
 pub struct Delta {
     pub is_minus: bool,
     pub offset: usize
+}
+
+impl Delta {
+    pub unsafe fn remote_delta_relocation(&self, hp: *mut c_void, target: *mut c_void, buffer: *mut c_void) -> Result<()> {
+        if self.offset == 0 { return Ok(()) };
+
+        match x96_check(buffer) {
+            X96::X86 => {
+                let image = read_image32(buffer);
+                let sections = std::slice::from_raw_parts(image.Sections, image.NumberOfSections as usize);
+
+                for section in sections {
+                    if section.Name != DOT_RELOC { continue }
+
+                    let reloc_address = section.PointerToRawData as u64;
+                    let mut offset = 0 as u64;
+                    let reloc_data = (*image.FileHeader).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+
+                    while offset < reloc_data.Size as u64 {
+                        let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>((buffer as usize + (reloc_address + offset) as usize) as *const _);
+
+                        offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u64;
+
+                        // 2 is relocation entry size.
+                        // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
+                        let entry_count = (block_header.BlockSize - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32) / 2;
+
+                        let block_entry = std::slice::from_raw_parts::<[u8; 2]>((buffer as usize + (reloc_address + offset) as usize) as *const _, entry_count as usize);
+
+                        for block in block_entry {
+                            let block = BASE_RELOCATION_ENTRY(*block);
+
+                            offset = offset + 2;
+
+                            if block.block_type() == 0 { continue }
+
+                            let field_address = block_header.PageAddress as u64 + block.offset() as u64;
+
+                            let mut d_buffer = 0 as u64;
+
+                            if ReadProcessMemory(
+                                hp, (target as u64 + field_address) as PVOID,
+                                &mut d_buffer as *const _ as *mut _, size_of::<u64>(), null_mut()) == 0 {
+                                    bail!("could not read memory from new dest image.")
+                            }
+
+                            d_buffer =
+                                if self.is_minus {
+                                    d_buffer - self.offset as u64
+                                }
+                                else {
+                                    d_buffer + self.offset as u64
+                                };
+
+                            if WriteProcessMemory(
+                                hp, (target as u64 + field_address) as PVOID,
+                                &mut d_buffer as *const _ as *mut _, size_of::<u64>(), null_mut()) == 0 {
+                                    bail!("could not write memory to new dest image.")
+                            }
+                        }
+                    }
+                }
+            },
+            X96::X64 => {
+                let image = read_image64(buffer);
+                let sections = std::slice::from_raw_parts(image.Sections, image.NumberOfSections as usize);
+
+                for section in sections {
+                    if section.Name != DOT_RELOC { continue }
+
+                    let reloc_address = section.PointerToRawData as u64;
+                    let mut offset = 0 as u64;
+                    let reloc_data = (*image.FileHeader).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+
+                    while offset < reloc_data.Size as u64 {
+                        let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>((buffer as usize + (reloc_address + offset) as usize) as *const _ );
+
+                        offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u64;
+
+                        // 2 is relocation entry size.
+                        // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
+                        let entry_count = (block_header.BlockSize - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32) / 2;
+
+                        let block_entry = std::slice::from_raw_parts::<[u8; 2]>((buffer as usize + (reloc_address + offset) as usize) as *const _, entry_count as usize);
+
+                        for block in block_entry {
+                            let block = BASE_RELOCATION_ENTRY(*block);
+
+                            offset = offset + 2;
+
+                            if block.block_type() == 0 { continue }
+
+                            let field_address = block_header.PageAddress as u64 + block.offset() as u64;
+
+                            let mut d_buffer = 0 as u64;
+
+                            if ReadProcessMemory(
+                                hp, (target as u64 + field_address) as PVOID,
+                                &mut d_buffer as *const _ as *mut _, size_of::<u64>(), null_mut()) == 0 {
+                                    bail!("could not read memory from new dest image.")
+                            }
+
+                            d_buffer =
+                                if self.is_minus {
+                                    d_buffer - self.offset as u64
+                                }
+                                else {
+                                    d_buffer + self.offset as u64
+                                };
+
+                            if WriteProcessMemory(
+                                hp, (target as u64 + field_address) as PVOID,
+                                &mut d_buffer as *const _ as *mut _, size_of::<u64>(), null_mut()) == 0 {
+                                    bail!("could not write memory to new dest image.")
+                            }
+                        }
+                    }
+                }
+            },
+            X96::Unknown => { bail!("Error. unsupported architecture.") }
+        }
+
+        Ok(())
+    }
 }
 
 pub fn calculate_delta(target: usize, src: usize) -> Delta {
@@ -137,7 +259,7 @@ pub fn calculate_delta(target: usize, src: usize) -> Delta {
         Delta { is_minus, offset: src - target }
     }
     else {
-        Delta { is_minus, offset: src - target }
+        Delta { is_minus, offset: target - src }
     }
 }
 
@@ -147,6 +269,20 @@ pub fn get_binary_from_file(file_name: impl Into<String>) -> Result<Vec<u8>> {
     let mut buffer = Vec::new();
     f.read_to_end(&mut buffer).with_context(|| format!("could not reading from the file: {}", &file_name))?;
     Ok(buffer)
+}
+
+pub unsafe fn rva2offset<T: T_LOADED_IMAGE>(rva: u32, image: &T) -> u32 {
+    let sections = image.get_sections_headers();
+
+    if rva < sections[0].PointerToRawData { return rva; }
+
+    for section in sections {
+        if rva > section.VirtualAddress && rva < section.VirtualAddress + section.SizeOfRawData {
+            return rva - section.VirtualAddress + section.PointerToRawData;
+        }
+    }
+
+    0
 }
 
 pub unsafe fn x96_check<T>(buffer: *mut T) -> X96 {
@@ -177,7 +313,7 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<LPCVOID
     let mut pbi = zeroed::<PROCESS_BASIC_INFORMATION>();
     let mut peb = zeroed::<PEB>();
 
-    NtQueryInformationProcess(h_process, 0, &mut pbi as *const _ as *mut _, size_of::<PROCESS_BASIC_INFORMATION> as u32, null_mut());
+    NtQueryInformationProcess(h_process, 0, &mut pbi as *const _ as *mut _, size_of_val(&pbi) as u32, null_mut());
 
     let peb_address = pbi.PebBaseAddress;
 
@@ -185,10 +321,19 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<LPCVOID
         Ok(peb.ImageBaseAddress)
     }
     else {
-        let (f, l, c) = echo_debug();
-        let d = format!("\nfile: {}, line: {}, column: {}", f, l, c);
-        bail!("Error. could not get image address.{}", d)
+        bail!("Error. could not get image address.")
     }
+}
+
+pub unsafe fn check_same_architecture(target: *mut c_void, src: *mut c_void) -> Result<()> {
+    let t = x96_check(target);
+    let s = x96_check(src);
+
+    if t == X96::Unknown || s == X96::Unknown { bail!("Error. unsupported architecture.") }
+    
+    if t != s { bail!("target and payload must have the same architecture.") }
+
+    Ok(())
 }
 
 pub unsafe fn read_image32<T>(buffer: *mut T) -> LOADED_IMAGE32 {
@@ -245,7 +390,7 @@ pub unsafe fn copy_remote_headers(hp: *mut c_void, target: LPCVOID, src: LPCVOID
     Ok(())
 }
 
-pub unsafe fn copy_remote_section_headers<T: T_LOADED_IMAGE>(hp: *mut c_void, target: LPCVOID, src: T, buffer: LPCVOID) -> Result<()> {
+pub unsafe fn copy_remote_section_headers<T: T_LOADED_IMAGE>(hp: *mut c_void, target: LPCVOID, src: &T, buffer: LPCVOID) -> Result<()> {
     let sections = src.get_sections_headers();
 
     for section in sections {
