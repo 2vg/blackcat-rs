@@ -60,13 +60,15 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
 
+    // calculate delta before to change base address
+    let delta = calculate_delta(dest_image_address as usize, (*src_image.FileHeader).OptionalHeader.ImageBase as usize);
+
     // change base address to allocated memory address
     (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u32;
 
     copy_remote_headers(hp, dest_image_address, &mut buffer[0] as *const _ as *mut _)?;
     copy_remote_section_headers(hp, dest_image_address, &src_image, &mut buffer[0] as *const _ as *mut _)?;
-    calculate_delta(dest_image_address as usize, src_nt_header.OptionalHeader.ImageBase as usize)
-        .remote_delta_relocation(hp, dest_image_address as _, &mut buffer[0] as *const _ as *mut _)?;
+    delta.remote_delta_relocation(hp, dest_image_address as _, &mut buffer[0] as *const _ as *mut _)?;
 
     // create context, and change entry point
     let entry_point = dest_image_address as u64 + (*src_image.FileHeader).OptionalHeader.AddressOfEntryPoint as u64;
@@ -133,13 +135,15 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
 
+    // calculate delta before to change base address
+    let delta = calculate_delta(dest_image_address as usize, (*src_image.FileHeader).OptionalHeader.ImageBase as usize);
+
     // change base address to allocated memory address
     (*src_image.FileHeader).OptionalHeader.ImageBase = dest_image_address as u64;
 
     copy_remote_headers(hp, dest_image_address, &mut buffer[0] as *const _ as *mut _)?;
     copy_remote_section_headers(hp, dest_image_address, &src_image, &mut buffer[0] as *const _ as *mut _)?;
-    calculate_delta(dest_image_address as usize, src_nt_header.OptionalHeader.ImageBase as usize)
-        .remote_delta_relocation(hp, dest_image_address as _, &mut buffer[0] as *const _ as *mut _)?;
+    delta.remote_delta_relocation(hp, dest_image_address as _, &mut buffer[0] as *const _ as *mut _)?;
 
     // create context, and change entry point
     let entry_point = dest_image_address as u64 + (*src_image.FileHeader).OptionalHeader.AddressOfEntryPoint as u64;
