@@ -2,7 +2,7 @@
 extern crate bitfield;
 
 // For debug
-use std::column;
+use std::{column, ptr::null};
 use std::file;
 use std::line;
 
@@ -19,8 +19,9 @@ use std::ptr::null_mut;
 use anyhow::*;
 use winapi::ctypes::c_void;
 use winapi::shared::{
+    basetsd::{ DWORD64 },
     ntdef::{ BOOLEAN, HANDLE, ULONG, PVOID },
-    minwindef::{ LPCVOID, PUCHAR, UCHAR }
+    minwindef::{ DWORD, LPCVOID, PUCHAR, UCHAR }
 };
 use winapi::um::{
     errhandlingapi::{ GetLastError },
@@ -36,7 +37,11 @@ use winapi::um::{
     winnt::{
         IMAGE_DOS_HEADER, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, LIST_ENTRY, PSTR,
         PIMAGE_NT_HEADERS32, PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, IMAGE_SECTION_HEADER,
-        IMAGE_DIRECTORY_ENTRY_BASERELOC, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
+        IMAGE_DIRECTORY_ENTRY_BASERELOC,
+        IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_IMPORT_DESCRIPTOR, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64,
+        IMAGE_SNAP_BY_ORDINAL32, IMAGE_SNAP_BY_ORDINAL64, IMAGE_ORDINAL32, IMAGE_ORDINAL64,
+        IMAGE_REL_BASED_DIR64, IMAGE_REL_BASED_HIGHLOW, IMAGE_REL_BASED_HIGH, IMAGE_REL_BASED_LOW,
+        MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
         CONTEXT, WOW64_CONTEXT, CONTEXT_FULL, WOW64_CONTEXT_FULL
     }
 };
@@ -250,6 +255,10 @@ impl Delta {
 
         Ok(())
     }
+
+    pub fn calc_offset(&self, offset: usize, block_type: u8) -> usize {
+        0
+    }
 }
 
 pub fn calculate_delta(target: usize, src: usize) -> Delta {
@@ -401,6 +410,64 @@ pub unsafe fn copy_remote_section_headers<T: T_LOADED_IMAGE>(hp: *mut c_void, ta
             bail!("could not write process memory.");
         }
     }
+
+    Ok(())
+}
+
+pub unsafe fn resolve_import(src: *mut c_void) -> Result<()> {
+    match x96_check(src as *mut c_void) {
+        X96::X86 => {
+            let image = read_image32(src as *mut c_void);
+            let image_base = (*image.FileHeader).OptionalHeader.ImageBase;
+            let import_directory = (*image.FileHeader).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
+            let mut import_discriptor = (image_base + import_directory.VirtualAddress) as *mut IMAGE_IMPORT_DESCRIPTOR;
+
+            while (*import_discriptor).Name != 0x0 {
+                let mut orig_thunk = (image_base + (*import_discriptor).u.OriginalFirstThunk()) as *mut IMAGE_THUNK_DATA32;
+                let mut thunk = (image_base + (*import_discriptor).FirstThunk) as *mut IMAGE_THUNK_DATA32;
+
+                while (*thunk).u1.AddressOfData() != &0x0 {
+                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL32(*(*thunk).u1.Ordinal()) {
+                        // TODO
+                    }
+                    else {
+                        // TODO
+                    }
+
+                    thunk = (thunk as usize + size_of::<DWORD>()) as _;
+                    if orig_thunk != null_mut() { orig_thunk = (orig_thunk as usize + size_of::<DWORD>()) as _; }
+                }
+
+                import_discriptor = (import_discriptor as usize + size_of::<DWORD>()) as _;
+            }
+        },
+        X96::X64 => {
+            let image = read_image64(src as *mut c_void);
+            let image_base = (*image.FileHeader).OptionalHeader.ImageBase;
+            let import_directory = (*image.FileHeader).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
+            let mut import_discriptor = (image_base + import_directory.VirtualAddress as u64) as *mut IMAGE_IMPORT_DESCRIPTOR;
+
+            while (*import_discriptor).Name != 0x0 {
+                let mut orig_thunk = (image_base + *(*import_discriptor).u.OriginalFirstThunk() as u64) as *mut IMAGE_THUNK_DATA64;
+                let mut thunk = (image_base + (*import_discriptor).FirstThunk as u64) as *mut IMAGE_THUNK_DATA64;
+
+                while (*thunk).u1.AddressOfData() != &0x0 {
+                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*thunk).u1.Ordinal()) {
+                        // TODO
+                    }
+                    else {
+                        // TODO
+                    }
+
+                    thunk = (thunk as usize + size_of::<DWORD64>()) as _;
+                    if orig_thunk != null_mut() { orig_thunk = (orig_thunk as usize + size_of::<DWORD64>()) as _; }
+                }
+
+                import_discriptor = (import_discriptor as usize + size_of::<DWORD64>()) as _;
+            }
+        },
+        X96::Unknown => { bail!("Error. unsupported architecture.") }
+    };
 
     Ok(())
 }
