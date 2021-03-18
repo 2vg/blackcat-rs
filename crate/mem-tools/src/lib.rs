@@ -426,12 +426,12 @@ pub unsafe fn resolve_import(src: *mut c_void) -> Result<()> {
                 let mut orig_thunk = (image_base + (*import_discriptor).u.OriginalFirstThunk()) as *mut IMAGE_THUNK_DATA32;
                 let mut thunk = (image_base + (*import_discriptor).FirstThunk) as *mut IMAGE_THUNK_DATA32;
 
-                while (*thunk).u1.AddressOfData() != &0x0 {
-                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL32(*(*thunk).u1.Ordinal()) {
-                        // TODO
+                while (*orig_thunk).u1.AddressOfData() != &0x0 {
+                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL32(*(*orig_thunk).u1.Ordinal()) {
+                        // TODO:
                     }
                     else {
-                        // TODO
+                        // TODO:
                     }
 
                     thunk = (thunk as usize + size_of::<DWORD>()) as _;
@@ -453,10 +453,10 @@ pub unsafe fn resolve_import(src: *mut c_void) -> Result<()> {
 
                 while (*thunk).u1.AddressOfData() != &0x0 {
                     if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*thunk).u1.Ordinal()) {
-                        // TODO
+                        // TODO:
                     }
                     else {
-                        // TODO
+                        // TODO:
                     }
 
                     thunk = (thunk as usize + size_of::<DWORD64>()) as _;
