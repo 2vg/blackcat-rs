@@ -1,25 +1,52 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
-use std::mem::{size_of, zeroed};
-use std::ptr::null_mut;
+use std::{
+    ffi::CString,
+    mem::{
+        size_of, zeroed
+    },
+    ptr::null_mut
+};
+
+use pelite::*;
+use pelite::pe64::Pe;
+use pelite::pe64::exports::GetProcAddress;
 
 use anyhow::*;
-use winapi::ctypes::c_void;
-use winapi::shared::{
-    basetsd::DWORD64,
-    minwindef::{PUCHAR, UCHAR},
-    ntdef::{BOOLEAN, HANDLE, PVOID, ULONG},
-};
-use winapi::um::{
-    memoryapi::{ReadProcessMemory, WriteProcessMemory},
-    winnt::{
-        IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
-        IMAGE_DOS_HEADER, IMAGE_IMPORT_DESCRIPTOR, IMAGE_OPTIONAL_HEADER64,
-        IMAGE_NT_HEADERS64, IMAGE_SECTION_HEADER, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
-        LIST_ENTRY,
-        PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR,
+use ntapi::{
+    ntldr::{
+        LDR_DATA_TABLE_ENTRY
     },
+    ntpebteb::PEB,
+    ntpsapi::{
+        PEB_LDR_DATA 
+    },
+    ntwow64::{
+        PEB32, PEB_LDR_DATA32, LDR_DATA_TABLE_ENTRY32
+    },
+    winapi_local::um::winnt::__readgsqword
+};
+use winapi::{
+    ctypes::{
+        c_char, c_void
+    },
+    shared::{
+        basetsd::DWORD64,
+        minwindef::{DWORD, PUCHAR, UCHAR},
+        ntdef::{BOOLEAN, HANDLE, LPCSTR, PVOID, ULONG},
+    },
+    um::{
+        memoryapi::{ReadProcessMemory, WriteProcessMemory},
+        winnt::{
+            IMAGE_DIRECTORY_ENTRY_BASERELOC,
+            IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_EXPORT_DIRECTORY, IMAGE_ORDINAL64,
+            IMAGE_DOS_HEADER, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR, IMAGE_OPTIONAL_HEADER64,
+            IMAGE_NT_HEADERS64, IMAGE_SECTION_HEADER, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
+            LIST_ENTRY,
+            PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR,
+        },
+    }
 };
 
 #[derive(Debug, PartialEq)]
@@ -47,20 +74,22 @@ pub struct LOADED_IMAGE {
     pub SizeOfImage: ULONG,
 }
 
-pub struct PE_Container {
+pub struct PE_Container<'a> {
     pub target_image_base: *mut c_void,
+    pub pe: pelite::pe64::PeView<'a>,
     pub payload_image: LOADED_IMAGE,
     pub payload_buffer: *mut c_void,
 }
 
-impl PE_Container {
-    pub fn new(target_image_base: *mut c_void, payload_buffer: *mut c_void) -> PE_Container {
+impl PE_Container<'_> {
+    pub fn new(target_image_base: *mut c_void, payload_buffer: *mut c_void) -> PE_Container<'static> {
         let image = unsafe { read_image(payload_buffer) };
 
         PE_Container {
             target_image_base,
             payload_image: image,
             payload_buffer,
+            pe: unsafe { pe64::PeView::module(payload_buffer as _) },
         }
     }
 
@@ -89,15 +118,13 @@ impl PE_Container {
         unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase = new_image_base as _ };
     }
 
-    pub fn copy_remote_headers(&self, hp: *mut c_void) -> Result<()> {
+    pub fn copy_remote_headers(&self, hp: *mut c_void) -> anyhow::Result<()> {
         if unsafe {
             WriteProcessMemory(
                 hp,
                 self.target_image_base as _,
                 self.payload_buffer,
-                (*self.payload_image.FileHeader)
-                    .OptionalHeader
-                    .SizeOfHeaders as usize,
+                self.pe.optional_header().SizeOfHeaders as usize,
                 null_mut(),
             )
         } == 0
@@ -107,10 +134,8 @@ impl PE_Container {
         Ok(())
     }
 
-    pub fn copy_remote_section_headers(&self, hp: *mut c_void) -> Result<()> {
-        let sections = self.get_payload_section_headers();
-
-        for section in sections {
+    pub fn copy_remote_section_headers(&self, hp: *mut c_void) -> anyhow::Result<()> {
+        for section in self.pe.section_headers().image() {
             let p_dest_section = self.target_image_base as usize + section.VirtualAddress as usize;
             if unsafe {
                 WriteProcessMemory(
@@ -129,45 +154,52 @@ impl PE_Container {
         Ok(())
     }
 
-    pub unsafe fn resolve_import(&self) -> Result<()> {
-        let import_directory = (*self.payload_image.FileHeader)
-            .OptionalHeader
-            .DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
-        let mut import_discriptor = (self.payload_base() as u64
-            + import_directory.VirtualAddress as u64)
-            as *mut IMAGE_IMPORT_DESCRIPTOR;
+    pub fn resolve_import(&self, p_LoadLiberay: pLoadLibraryA, p_GetProcAdress: pGetProcAddress) -> anyhow::Result<()> {
+        unsafe {
+            let import_directory = (*self.payload_image.FileHeader)
+                .OptionalHeader
+                .DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
+            let mut import_discriptor = (self.payload_base() as u64
+                + import_directory.VirtualAddress as u64)
+                as *mut IMAGE_IMPORT_DESCRIPTOR;
 
-        while (*import_discriptor).Name != 0x0 {
-            let mut orig_thunk = (self.payload_base() as u64
-                + *(*import_discriptor).u.OriginalFirstThunk() as u64)
-                as *mut IMAGE_THUNK_DATA64;
-            let mut thunk = (self.payload_base() as u64 + (*import_discriptor).FirstThunk as u64)
-                as *mut IMAGE_THUNK_DATA64;
+            while (*import_discriptor).Name != 0x0 {
+                let lib_name = (self.payload_base() as u32 + (*import_discriptor).Name) as LPCSTR;
+                let lib = p_LoadLiberay(lib_name);
+                let mut orig_thunk = (self.payload_base() as u64
+                    + *(*import_discriptor).u.OriginalFirstThunk() as u64)
+                    as *mut IMAGE_THUNK_DATA64;
+                let mut thunk = (self.payload_base() as u64 + (*import_discriptor).FirstThunk as u64)
+                    as *mut IMAGE_THUNK_DATA64;
 
-            while (*thunk).u1.AddressOfData() != &0x0 {
-                if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*thunk).u1.Ordinal()) {
-                    // TODO:
-                } else {
-                    // TODO:
+                while (*thunk).u1.AddressOfData() != &0x0 {
+                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*thunk).u1.Ordinal()) {
+                        let fn_ordinal = IMAGE_ORDINAL64(*(*thunk).u1.Ordinal()) as LPCSTR;
+                        *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, fn_ordinal) as _;
+                    } else {
+                        let fn_name = (self.payload_base() as u64 + *(*thunk).u1.AddressOfData()) as *mut IMAGE_IMPORT_BY_NAME;
+                        *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, (*fn_name).Name[0] as _) as _;
+                    }
+
+                    thunk = (thunk as usize + size_of::<DWORD64>()) as _;
+                    if orig_thunk != null_mut() {
+                        orig_thunk = (orig_thunk as usize + size_of::<DWORD64>()) as _;
+                    }
                 }
 
-                thunk = (thunk as usize + size_of::<DWORD64>()) as _;
-                if orig_thunk != null_mut() {
-                    orig_thunk = (orig_thunk as usize + size_of::<DWORD64>()) as _;
-                }
+                import_discriptor = (import_discriptor as usize + size_of::<DWORD64>()) as _;
             }
 
-            import_discriptor = (import_discriptor as usize + size_of::<DWORD64>()) as _;
+            Ok(())
         }
-
-        Ok(())
     }
 
+    // TODO: rewrite with pelite
     pub fn remote_delta_relocation(
         &self,
         hp: *mut c_void,
         delta: Delta
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         unsafe {
             let sections = self.get_payload_section_headers();
 
@@ -248,6 +280,11 @@ impl PE_Container {
 
             Ok(())
         }
+    }
+
+    pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
+        let function_name = function_name.into();
+        Ok(self.pe.get_proc_address(&function_name)? as _)
     }
 }
 

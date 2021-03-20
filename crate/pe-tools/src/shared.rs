@@ -15,7 +15,8 @@ use ntapi::{
 };
 use winapi::ctypes::c_void;
 use winapi::shared::{
-    ntdef::HANDLE,
+    minwindef::{FARPROC, HMODULE},
+    ntdef::{HANDLE, LPCSTR},
 };
 use winapi::um::{
     memoryapi::ReadProcessMemory,
@@ -81,6 +82,9 @@ impl Delta {
 // ".reloc" binary
 pub const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
 
+pub type pLoadLibraryA = fn(lpFileName: LPCSTR) -> HMODULE;
+pub type pGetProcAddress = fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
+
 pub unsafe fn x96_check<T>(buffer: *mut T) -> X96 {
     let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *mut _);
     let p_buffer = buffer as usize + dos_header.e_lfanew as usize;
@@ -137,5 +141,16 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_
         Ok(peb.ImageBaseAddress)
     } else {
         bail!("Error. could not get image address.")
+    }
+}
+
+pub fn ptr_to_str(p: &mut *mut u8) -> String {
+    unsafe {
+        let mut str = Vec::new();
+        while **p != 0x0 {
+            str.push(**p);
+            *p = (*p as usize + 1) as _;
+        };
+        String::from_utf8(str).unwrap()
     }
 }
