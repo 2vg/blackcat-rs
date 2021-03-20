@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::mem::{size_of, size_of_val, zeroed};
+use std::mem::{size_of, zeroed};
 use std::ptr::null_mut;
 
 use anyhow::*;
@@ -120,7 +120,7 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_
         h_process,
         0,
         &mut pbi as *const _ as *mut _,
-        size_of_val(&pbi) as u32,
+        size_of::<PROCESS_BASIC_INFORMATION>() as _,
         null_mut(),
     );
 
