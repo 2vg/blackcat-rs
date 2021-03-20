@@ -42,10 +42,10 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
 
     // read src program and mapping
     let mut buffer = shared::get_binary_from_file(src.into())?;
-    let container = x86::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
+    let mut container = x86::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
 
     // Unmapping image from dest process
-    if NtUnmapViewOfSection(hp, container.target_base) != STATUS_SUCCESS {
+    if NtUnmapViewOfSection(hp, container.target_image_base) != STATUS_SUCCESS {
         bail!("could not unmapping image from dest process. NtUnmapViewOfSection calling was failed.")
     };
 
@@ -56,19 +56,20 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
     if new_address as u64 == 0x0 as u64 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
+    container.change_target_imabe_base(new_address);
 
     // calculate delta before to change base address
-    let delta = shared::Delta::calculate_delta(container.target_base as usize, container.payload_base() as usize);
+    let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
 
     // change base address to allocated memory address
-    container.change_imabe_base(new_address);
+    container.change_payload_imabe_base(new_address);
 
     container.copy_remote_headers(hp)?;
     container.copy_remote_section_headers(hp)?;
     container.remote_delta_relocation(hp, delta)?;
 
     // create context, and change entry point
-    let entry_point = container.target_base as usize + container.get_payload_optional_headers().AddressOfEntryPoint as usize;
+    let entry_point = container.target_image_base as usize + container.get_payload_optional_headers().AddressOfEntryPoint as usize;
     let mut context = zeroed::<WOW64_CONTEXT>();
     context.ContextFlags = WOW64_CONTEXT_FULL;
 
@@ -110,7 +111,7 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
 
     // read src program and mapping
     let mut buffer = shared::get_binary_from_file(src.into())?;
-    let container = x64::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
+    let mut container = x64::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
 
     // Unmapping image from dest process
     if NtUnmapViewOfSection(hp, dest_image_address as *mut _) != STATUS_SUCCESS {
@@ -124,12 +125,13 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
     if new_address as u64 == 0x0 as u64 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
+    container.change_target_imabe_base(new_address);
 
     // calculate delta before to change base address
-    let delta = shared::Delta::calculate_delta(container.target_base as usize, container.payload_base() as usize);
+    let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
 
     // change base address to allocated memory address
-    container.change_imabe_base(new_address);
+    container.change_payload_imabe_base(new_address);
 
     container.copy_remote_headers(hp)?;
     container.copy_remote_section_headers(hp)?;

