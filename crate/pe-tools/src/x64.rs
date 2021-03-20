@@ -1,44 +1,24 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
-use std::ffi::CString;
-use std::fs::File;
-use std::io::prelude::*;
-use std::mem::{size_of, size_of_val, zeroed};
+use std::mem::{size_of, zeroed};
 use std::ptr::null_mut;
 
 use anyhow::*;
-use bitfield;
-use ntapi::{
-    ntpebteb::{PEB, PPEB},
-    ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
-};
 use winapi::ctypes::c_void;
 use winapi::shared::{
     basetsd::DWORD64,
-    minwindef::{DWORD, LPCVOID, PUCHAR, UCHAR},
+    minwindef::{PUCHAR, UCHAR},
     ntdef::{BOOLEAN, HANDLE, PVOID, ULONG},
 };
 use winapi::um::{
-    errhandlingapi::GetLastError,
-    memoryapi::{ReadProcessMemory, VirtualAlloc, VirtualAllocEx, VirtualFree, WriteProcessMemory},
-    processthreadsapi::{
-        CreateProcessA,
-        GetThreadContext,
-        ResumeThread,
-        SetThreadContext, // SuspendThread
-        PROCESS_INFORMATION,
-        STARTUPINFOA,
-    },
-    winbase::{Wow64GetThreadContext, Wow64SetThreadContext, CREATE_SUSPENDED},
+    memoryapi::{ReadProcessMemory, WriteProcessMemory},
     winnt::{
-        CONTEXT, CONTEXT_FULL, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
-        IMAGE_DOS_HEADER, IMAGE_IMPORT_DESCRIPTOR, IMAGE_NT_HEADERS, IMAGE_NT_HEADERS32, IMAGE_OPTIONAL_HEADER64,
-        IMAGE_NT_HEADERS64, IMAGE_ORDINAL32, IMAGE_ORDINAL64, IMAGE_REL_BASED_DIR64,
-        IMAGE_REL_BASED_HIGH, IMAGE_REL_BASED_HIGHLOW, IMAGE_REL_BASED_LOW, IMAGE_SECTION_HEADER,
-        IMAGE_SNAP_BY_ORDINAL32, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64,
-        LIST_ENTRY, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, PIMAGE_NT_HEADERS32,
-        PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR, WOW64_CONTEXT, WOW64_CONTEXT_FULL,
+        IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
+        IMAGE_DOS_HEADER, IMAGE_IMPORT_DESCRIPTOR, IMAGE_OPTIONAL_HEADER64,
+        IMAGE_NT_HEADERS64, IMAGE_SECTION_HEADER, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
+        LIST_ENTRY,
+        PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR,
     },
 };
 
