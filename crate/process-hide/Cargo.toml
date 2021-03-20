@@ -11,6 +11,7 @@ anyhow = "1.0.38"
 ntapi = "0.3.6"
 winapi = { version = "0.3.9", features = ["libloaderapi", "minwindef", "winuser"] }
 detour = "0.7.1"
+minhook-sys = "0.1.1"
 
 [lib]
 name = "hook_cat"

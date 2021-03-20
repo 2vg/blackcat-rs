@@ -1,5 +1,5 @@
 [package]
-name = "mem-tools"
+name = "pe-tools"
 version = "0.1.0"
 authors = ["uru <mail@nyaa.gg>"]
 edition = "2018"

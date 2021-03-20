@@ -1,4 +1,4 @@
-mem-tools
+pe-tools
 ===
 
 Utilities related to PE, memory, etc.

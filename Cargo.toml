@@ -8,7 +8,7 @@ edition = "2018"
 
 [workspace]
 members = [
-    "crate/mem-tools",
+    "crate/pe-tools",
     "crate/payload-sample",
     "crate/process-hide",
     "crate/process-hollow",

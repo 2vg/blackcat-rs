@@ -1,7 +1,9 @@
 use anyhow::*;
 use detour::static_detour;
+use minhook_sys::*;
 use ntapi::ntexapi::{ NtQuerySystemInformation, SYSTEM_PROCESS_INFORMATION };
 use winapi::{
+    ctypes::c_void,
     shared::{
         minwindef::{ FARPROC },
         ntdef::{ HANDLE, LARGE_INTEGER, NTSTATUS, PULONG, PVOID, ULONG, UNICODE_STRING }
@@ -36,16 +38,53 @@ static_detour! {
 }
 
 type FnNtQuerySystemInformation = unsafe extern "system" fn(u32, PVOID, ULONG, PULONG) -> NTSTATUS;
+type PNtQuerySystemInformation = *mut fn(u32, PVOID, ULONG, PULONG) -> NTSTATUS;
 
 pub unsafe fn ntquery_hook() -> Result<()> {
-    let target = get_module_function::<FnNtQuerySystemInformation>("ntdll.dll", "NtQuerySystemInformation")?;
+    let mut target = get_module_symbol_address("ntdll.dll", "NtQuerySystemInformation").unwrap() as *mut c_void;
 
-    NtQuerySystemInformationHook.initialize(target, detour_NtQuerySystemInformation)?.enable()?;
+    match MH_Initialize() {
+        MH_OK => {
+            debug_msg("done MH init");
+        },
+        _ => { debug_msg("error MH init"); }
+    }
+
+    let api = CString::new::<String>("NtQuerySystemInformation".into()).expect("CString::new failed");
+    let hook_fn = detour_NtQuerySystemInformation as PNtQuerySystemInformation;
+
+    let status = MH_CreateHookApi(e("ntdll.dll").as_ptr(), api.as_ptr(), hook_fn as _, &mut target as *const _ as _);
+
+    match status {
+        MH_OK => { debug_msg("done MH create hook api"); },
+        _ => { debug_msg(format!("could not craete hook. error code: {}", status)) }
+    };
+
+    let status = MH_EnableHook(null_mut());
+
+    match status {
+        MH_OK => { debug_msg("done MH enable"); },
+        _ => { debug_msg(format!("could not enable hook. error code: {}", status)) }
+    };
+
+    //NtQuerySystemInformationHook.initialize(target, detour_NtQuerySystemInformation)?.enable()?;
     Ok(())
 }
 
+fn debug_msg(msg: impl Into<String>) {
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            e(&msg.into()).as_ptr(),
+            e("Hello ♡").as_ptr(),
+            MB_OK
+        );
+    }
+}
+
 fn detour_NtQuerySystemInformation(sys_info_class: u32, sys_info: PVOID, sys_info_length: ULONG, return_length: PULONG) -> NTSTATUS {
-    let status = unsafe { NtQuerySystemInformation(sys_info_class, sys_info, sys_info_length, return_length) };
+    let OrigNtQuerySystemInformation: PNtQuerySystemInformation = get_module_symbol_address("ntdll.dll", "NtQuerySystemInformation").unwrap() as *mut _;
+    let status = unsafe { (*OrigNtQuerySystemInformation)(sys_info_class, sys_info, sys_info_length, return_length) };
 
     if sys_info_class == 0x5 {
         let p_current: *mut SYSTEM_PROCESS_INFORMATION = null_mut();
