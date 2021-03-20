@@ -10,15 +10,15 @@ use std::ptr::null_mut;
 use anyhow::*;
 use bitfield;
 use ntapi::{
-    ntpebteb::{PEB},
+    ntpebteb::PEB,
     ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
 };
 use winapi::ctypes::c_void;
 use winapi::shared::{
-    ntdef::{HANDLE},
+    ntdef::HANDLE,
 };
 use winapi::um::{
-    memoryapi::{ReadProcessMemory},
+    memoryapi::ReadProcessMemory,
     winnt::{
         IMAGE_DOS_HEADER, IMAGE_NT_HEADERS,
     },
