@@ -1,46 +1,25 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
-use std::{
-    ffi::CString,
-    mem::{
-        size_of, zeroed
-    },
-    ptr::null_mut
-};
+use std::mem::{size_of, zeroed};
+use std::ptr::null_mut;
 
 use pelite::*;
 use pelite::pe64::Pe;
 use pelite::pe64::exports::GetProcAddress;
 
 use anyhow::*;
-use ntapi::{
-    ntldr::{
-        LDR_DATA_TABLE_ENTRY
-    },
-    ntpebteb::PEB,
-    ntpsapi::{
-        PEB_LDR_DATA 
-    },
-    ntwow64::{
-        PEB32, PEB_LDR_DATA32, LDR_DATA_TABLE_ENTRY32
-    },
-    winapi_local::um::winnt::__readgsqword
-};
 use winapi::{
-    ctypes::{
-        c_char, c_void
-    },
+    ctypes::c_void,
     shared::{
         basetsd::DWORD64,
-        minwindef::{DWORD, PUCHAR, UCHAR},
+        minwindef::{PUCHAR, UCHAR},
         ntdef::{BOOLEAN, HANDLE, LPCSTR, PVOID, ULONG},
     },
     um::{
         memoryapi::{ReadProcessMemory, WriteProcessMemory},
         winnt::{
-            IMAGE_DIRECTORY_ENTRY_BASERELOC,
-            IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_EXPORT_DIRECTORY, IMAGE_ORDINAL64,
+            IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL64,
             IMAGE_DOS_HEADER, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR, IMAGE_OPTIONAL_HEADER64,
             IMAGE_NT_HEADERS64, IMAGE_SECTION_HEADER, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
             LIST_ENTRY,
