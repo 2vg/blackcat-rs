@@ -1,7 +1,7 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
-use std::mem::{size_of, zeroed};
+use std::mem::size_of;
 use std::ptr::null_mut;
 
 use pelite::*;
@@ -13,17 +13,15 @@ use winapi::{
     ctypes::c_void,
     shared::{
         basetsd::DWORD64,
-        minwindef::{PUCHAR, UCHAR},
-        ntdef::{BOOLEAN, HANDLE, LPCSTR, PVOID, ULONG},
+        ntdef::{LPCSTR, PVOID},
     },
     um::{
         memoryapi::{ReadProcessMemory, WriteProcessMemory},
         winnt::{
             IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
             IMAGE_ORDINAL64, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR,
-            IMAGE_DOS_HEADER, IMAGE_NT_HEADERS64, IMAGE_OPTIONAL_HEADER64, IMAGE_SECTION_HEADER,
-            LIST_ENTRY, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
-            PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR,
+            IMAGE_DOS_HEADER, IMAGE_NT_HEADERS64,
+            IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
         },
     }
 };
@@ -35,66 +33,48 @@ pub enum X96 {
     Unknown,
 }
 
-#[repr(C)]
-pub struct LOADED_IMAGE {
-    pub ModuleName: PSTR,
-    pub hFile: HANDLE,
-    pub MappedAddress: PUCHAR,
-    pub FileHeader: PIMAGE_NT_HEADERS64,
-    pub LastRvaSection: PIMAGE_SECTION_HEADER,
-    pub NumberOfSections: ULONG,
-    pub Sections: PIMAGE_SECTION_HEADER,
-    pub Characteristics: ULONG,
-    pub fSystemImage: BOOLEAN,
-    pub fDOSImage: BOOLEAN,
-    pub fReadOnly: BOOLEAN,
-    pub Version: UCHAR,
-    pub Links: LIST_ENTRY,
-    pub SizeOfImage: ULONG,
-}
-
 pub struct PE_Container<'a> {
     pub target_image_base: *mut c_void,
     pub pe: pelite::pe64::PeView<'a>,
-    pub payload_image: LOADED_IMAGE,
     pub payload_buffer: *mut c_void,
 }
 
 impl PE_Container<'_> {
     pub fn new(target_image_base: *mut c_void, payload_buffer: *mut c_void) -> PE_Container<'static> {
-        let image = unsafe { read_image(payload_buffer) };
-
         PE_Container {
             target_image_base,
-            payload_image: image,
             payload_buffer,
             pe: unsafe { pe64::PeView::module(payload_buffer as _) },
         }
     }
 
     pub fn payload_base(&self) -> *mut c_void {
-        unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase as _ }
+        self.get_payload_optional_headers().ImageBase as _
     }
 
-    pub fn get_payload_optional_headers(&self) -> IMAGE_OPTIONAL_HEADER64 {
-        (unsafe { *self.payload_image.FileHeader }).OptionalHeader
+    pub fn get_payload_optional_headers(&self) -> &pelite::image::IMAGE_OPTIONAL_HEADER64 {
+        self.pe.optional_header()
     }
 
-    pub fn get_payload_section_headers(&self) -> &[IMAGE_SECTION_HEADER] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.payload_image.Sections,
-                self.payload_image.NumberOfSections as usize,
-            )
-        }
+    pub fn get_payload_section_headers(&self) -> &[pelite::image::IMAGE_SECTION_HEADER] {
+        self.pe.section_headers().image()
     }
 
     pub fn change_target_image_base(&mut self, new_image_base: *mut c_void) {
         self.target_image_base = new_image_base;
     }
 
-    pub fn change_payload_image_base(&self, new_image_base: *mut c_void) {
-        unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase = new_image_base as _ };
+    pub fn refresh_pe(&mut self) {
+        self.pe = unsafe { pe64::PeView::module(self.payload_buffer as _) };
+    }
+
+    pub fn change_payload_image_base(&mut self, new_image_base: *mut c_void) {
+        unsafe {
+            let dos_header = self.payload_buffer as *mut IMAGE_DOS_HEADER;
+            let nt_header = (self.payload_buffer as usize + (*dos_header).e_lfanew as usize) as *mut IMAGE_NT_HEADERS64;
+            (*nt_header).OptionalHeader.ImageBase = new_image_base as _;
+        };
+        self.refresh_pe();
     }
 
     pub fn copy_headers(&self) -> anyhow::Result<()> {
@@ -158,9 +138,7 @@ impl PE_Container<'_> {
     // TODO: check this is correct
     pub fn resolve_import(&self, p_LoadLiberay: pLoadLibraryA, p_GetProcAdress: pGetProcAddress) -> anyhow::Result<()> {
         unsafe {
-            let import_directory = (*self.payload_image.FileHeader)
-                .OptionalHeader
-                .DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
+            let import_directory = self.pe.data_directory()[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
             let mut import_discriptor = (self.target_image_base as u64
                 + import_directory.VirtualAddress as u64)
                 as *mut IMAGE_IMPORT_DESCRIPTOR;
@@ -203,18 +181,14 @@ impl PE_Container<'_> {
         delta: Delta
     ) -> anyhow::Result<()> {
         unsafe {
-            let sections = self.get_payload_section_headers();
-
-            for section in sections {
+            for section in self.pe.section_headers().image() {
                 if section.Name != DOT_RELOC {
                     continue;
                 }
 
                 let reloc_address = section.PointerToRawData as u64;
                 let mut offset = 0 as u64;
-                let reloc_data = (*self.payload_image.FileHeader)
-                    .OptionalHeader
-                    .DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+                let reloc_data = self.pe.data_directory()[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
 
                 while offset < reloc_data.Size as u64 {
                     let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(
@@ -266,18 +240,14 @@ impl PE_Container<'_> {
         delta: Delta
     ) -> anyhow::Result<()> {
         unsafe {
-            let sections = self.get_payload_section_headers();
-
-            for section in sections {
+            for section in self.pe.section_headers().image() {
                 if section.Name != DOT_RELOC {
                     continue;
                 }
 
                 let reloc_address = section.PointerToRawData as u64;
                 let mut offset = 0 as u64;
-                let reloc_data = (*self.payload_image.FileHeader)
-                    .OptionalHeader
-                    .DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+                let reloc_data = self.pe.data_directory()[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
 
                 while offset < reloc_data.Size as u64 {
                     let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(
@@ -351,24 +321,4 @@ impl PE_Container<'_> {
         let function_name = function_name.into();
         Ok(self.pe.get_proc_address(&function_name)? as _)
     }
-}
-
-pub unsafe fn get_image_base_address(buffer: *mut c_void) -> *mut c_void {
-    (*read_image(buffer).FileHeader).OptionalHeader.ImageBase as _
-}
-
-pub unsafe fn read_image(buffer: *mut c_void) -> LOADED_IMAGE {
-    let mut loaded_image = zeroed::<LOADED_IMAGE>();
-
-    let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as _);
-    let p_nt_header = buffer as u64 + dos_header.e_lfanew as u64;
-    let nt_header = std::ptr::read::<IMAGE_NT_HEADERS64>(p_nt_header as *mut _);
-    let p_sections =
-        buffer as u64 + dos_header.e_lfanew as u64 + size_of::<IMAGE_NT_HEADERS64>() as u64;
-
-    loaded_image.FileHeader = p_nt_header as *mut IMAGE_NT_HEADERS64;
-    loaded_image.NumberOfSections = nt_header.FileHeader.NumberOfSections as u32;
-    loaded_image.Sections = p_sections as *mut _;
-
-    loaded_image
 }
