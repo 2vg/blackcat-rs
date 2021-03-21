@@ -19,10 +19,10 @@ use winapi::{
     um::{
         memoryapi::{ReadProcessMemory, WriteProcessMemory},
         winnt::{
-            IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL64,
-            IMAGE_DOS_HEADER, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR, IMAGE_OPTIONAL_HEADER64,
-            IMAGE_NT_HEADERS64, IMAGE_SECTION_HEADER, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
-            LIST_ENTRY,
+            IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
+            IMAGE_ORDINAL64, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR,
+            IMAGE_DOS_HEADER, IMAGE_NT_HEADERS64, IMAGE_OPTIONAL_HEADER64, IMAGE_SECTION_HEADER,
+            LIST_ENTRY, IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
             PIMAGE_NT_HEADERS64, PIMAGE_SECTION_HEADER, PSTR,
         },
     }
@@ -97,6 +97,15 @@ impl PE_Container<'_> {
         unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase = new_image_base as _ };
     }
 
+    pub fn copy_headers(&self) -> anyhow::Result<()> {
+        unsafe {
+            for i in 0..self.get_payload_optional_headers().SizeOfHeaders {
+                *((self.target_image_base as u64 + i as u64) as *mut u8) = *((self.payload_base() as u64 + i as u64) as *mut u8)
+            }
+            Ok(())
+        }
+    }
+
     pub fn copy_remote_headers(&self, hp: *mut c_void) -> anyhow::Result<()> {
         if unsafe {
             WriteProcessMemory(
@@ -111,6 +120,19 @@ impl PE_Container<'_> {
             bail!("could not write process memory.");
         }
         Ok(())
+    }
+
+    pub fn copy_section_headers(&self) -> anyhow::Result<()> {
+        unsafe {
+            for section in self.pe.section_headers().image() {
+                let p_dest_section = self.target_image_base as u64 + section.VirtualAddress as u64;
+                for i in 0..section.SizeOfRawData {
+                    *((p_dest_section + i as u64) as *mut u8) =
+                        *((self.payload_base() as u64 + section.PointerToRawData as u64 + i as u64) as *mut u8);
+                }
+            }
+            Ok(())
+        }
     }
 
     pub fn copy_remote_section_headers(&self, hp: *mut c_void) -> anyhow::Result<()> {
@@ -133,22 +155,24 @@ impl PE_Container<'_> {
         Ok(())
     }
 
+    // TODO: check this is correct
     pub fn resolve_import(&self, p_LoadLiberay: pLoadLibraryA, p_GetProcAdress: pGetProcAddress) -> anyhow::Result<()> {
         unsafe {
             let import_directory = (*self.payload_image.FileHeader)
                 .OptionalHeader
                 .DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
-            let mut import_discriptor = (self.payload_base() as u64
+            let mut import_discriptor = (self.target_image_base as u64
                 + import_directory.VirtualAddress as u64)
                 as *mut IMAGE_IMPORT_DESCRIPTOR;
 
             while (*import_discriptor).Name != 0x0 {
-                let lib_name = (self.payload_base() as u32 + (*import_discriptor).Name) as LPCSTR;
+                let lib_name = (self.target_image_base as u32 + (*import_discriptor).Name) as LPCSTR;
                 let lib = p_LoadLiberay(lib_name);
-                let mut orig_thunk = (self.payload_base() as u64
+
+                let mut orig_thunk = (self.target_image_base as u64
                     + *(*import_discriptor).u.OriginalFirstThunk() as u64)
                     as *mut IMAGE_THUNK_DATA64;
-                let mut thunk = (self.payload_base() as u64 + (*import_discriptor).FirstThunk as u64)
+                let mut thunk = (self.target_image_base as u64 + (*import_discriptor).FirstThunk as u64)
                     as *mut IMAGE_THUNK_DATA64;
 
                 while (*thunk).u1.AddressOfData() != &0x0 {
@@ -156,7 +180,7 @@ impl PE_Container<'_> {
                         let fn_ordinal = IMAGE_ORDINAL64(*(*thunk).u1.Ordinal()) as LPCSTR;
                         *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, fn_ordinal) as _;
                     } else {
-                        let fn_name = (self.payload_base() as u64 + *(*thunk).u1.AddressOfData()) as *mut IMAGE_IMPORT_BY_NAME;
+                        let fn_name = (self.target_image_base as u64 + *(*thunk).u1.AddressOfData()) as *mut IMAGE_IMPORT_BY_NAME;
                         *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, (*fn_name).Name[0] as _) as _;
                     }
 
@@ -167,6 +191,68 @@ impl PE_Container<'_> {
                 }
 
                 import_discriptor = (import_discriptor as usize + size_of::<DWORD64>()) as _;
+            }
+
+            Ok(())
+        }
+    }
+
+    // TODO: rewrite with pelite
+    pub fn delta_relocation(
+        &self,
+        delta: Delta
+    ) -> anyhow::Result<()> {
+        unsafe {
+            let sections = self.get_payload_section_headers();
+
+            for section in sections {
+                if section.Name != DOT_RELOC {
+                    continue;
+                }
+
+                let reloc_address = section.PointerToRawData as u64;
+                let mut offset = 0 as u64;
+                let reloc_data = (*self.payload_image.FileHeader)
+                    .OptionalHeader
+                    .DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
+
+                while offset < reloc_data.Size as u64 {
+                    let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(
+                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
+                            as *const _,
+                    );
+
+                    offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u64;
+
+                    // 2 is relocation entry size.
+                    // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
+                    let entry_count = (block_header.BlockSize
+                        - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32)
+                        / 2;
+
+                    let block_entry = std::slice::from_raw_parts::<[u8; 2]>(
+                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
+                            as *const _,
+                        entry_count as usize,
+                    );
+
+                    for block in block_entry {
+                        let block = BASE_RELOCATION_ENTRY(*block);
+
+                        offset = offset + 2;
+
+                        if block.block_type() == 0 {
+                            continue;
+                        }
+
+                        let target = self.target_image_base as u64 + block_header.PageAddress as u64 + block.offset() as u64;
+                        if delta.is_minus {
+                            *(target as *mut u64) = *(target as *mut u64) - delta.offset as u64;
+                        } else {
+                            *(target as *mut u64) = *(target as *mut u64) + delta.offset as u64;
+                        }
+                    }
+                }
             }
 
             Ok(())

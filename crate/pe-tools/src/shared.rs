@@ -144,6 +144,10 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_
     }
 }
 
+pub fn ptr_to_fn<T>(p: *mut c_void) -> T {
+    unsafe { std::mem::transmute_copy::<usize, T>(&(p as usize)) as T }
+}
+
 pub fn ptr_to_str(p: &mut *mut u8) -> String {
     unsafe {
         let mut str = Vec::new();
