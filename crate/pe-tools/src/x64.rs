@@ -89,11 +89,11 @@ impl PE_Container<'_> {
         }
     }
 
-    pub fn change_target_imabe_base(&mut self, new_image_base: *mut c_void) {
+    pub fn change_target_image_base(&mut self, new_image_base: *mut c_void) {
         self.target_image_base = new_image_base;
     }
 
-    pub fn change_payload_imabe_base(&self, new_image_base: *mut c_void) {
+    pub fn change_payload_image_base(&self, new_image_base: *mut c_void) {
         unsafe { (*self.payload_image.FileHeader).OptionalHeader.ImageBase = new_image_base as _ };
     }
 
