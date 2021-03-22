@@ -174,20 +174,26 @@ impl PE_Container<'_> {
         }
     }
 
-    // TODO: rewrite with pelite
     pub fn delta_relocation(
         &self,
         delta: Delta
     ) -> anyhow::Result<()> {
         Ok(unsafe {
-            self.delta_relocation_closure(delta, |target, delta| {
-                if delta.is_minus {
-                    *(target as *mut u64) = *(target as *mut u64) - delta.offset as u64;
-                } else {
-                    *(target as *mut u64) = *(target as *mut u64) + delta.offset as u64;
+            let target_base_container = PE_Container::<'_>::new(0x0 as _, self.target_image_base);
+            let base_relocs = target_base_container.pe.base_relocs()?;
+            for block in base_relocs.iter_blocks() {
+                let va = block.image().VirtualAddress as u64;
+                for reloc_list in block.words() {
+                    let offset = block.rva_of(reloc_list) as u64;
+                    let addr = self.target_image_base as u64 + va + offset;
+
+                    if delta.is_minus && (addr > delta.offset as _) {
+                        *(addr as *mut u64) = *(addr as *mut u64) - delta.offset as u64;
+                    } else {
+                        *(addr as *mut u64) = *(addr as *mut u64) + delta.offset as u64;
+                    }
                 }
-                Ok(())
-            })?;
+            }
         })
     }
 
