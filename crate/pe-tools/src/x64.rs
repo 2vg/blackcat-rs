@@ -154,8 +154,8 @@ impl PE_Container<'_> {
                     as *mut IMAGE_THUNK_DATA64;
 
                 while (*thunk).u1.AddressOfData() != &0x0 {
-                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*thunk).u1.Ordinal()) {
-                        let fn_ordinal = IMAGE_ORDINAL64(*(*thunk).u1.Ordinal()) as LPCSTR;
+                    if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*orig_thunk).u1.Ordinal()) {
+                        let fn_ordinal = IMAGE_ORDINAL64(*(*orig_thunk).u1.Ordinal()) as LPCSTR;
                         *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, fn_ordinal) as _;
                     } else {
                         let fn_name = (self.target_image_base as u64 + *(*thunk).u1.AddressOfData()) as *mut IMAGE_IMPORT_BY_NAME;
