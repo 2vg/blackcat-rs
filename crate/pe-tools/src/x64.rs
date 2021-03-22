@@ -22,6 +22,7 @@ use winapi::{
             IMAGE_ORDINAL64, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR,
             IMAGE_DOS_HEADER, IMAGE_NT_HEADERS64,
             IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
+            PIMAGE_TLS_CALLBACK, DLL_PROCESS_ATTACH
         },
     }
 };
@@ -233,6 +234,26 @@ impl PE_Container<'_> {
                 Ok(())
             })?;
         })
+    }
+
+    pub fn exec_tls_callback(&self) -> Result<()> {
+        for callback in self.pe.tls()?.callbacks()? {
+            if *callback == 0 { continue }
+            unsafe {
+                match std::mem::transmute::<*const c_void, PIMAGE_TLS_CALLBACK>(*(*callback as *const *const c_void)) {
+                    Some(cb) => {
+                        cb(
+                            self.target_image_base,
+                            DLL_PROCESS_ATTACH,
+                            0 as _,
+                        );
+                    },
+                    None => continue
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
