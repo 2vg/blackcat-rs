@@ -13,9 +13,10 @@ Add functions that will need little by little.</br>
 so, please be careful when using it.</br>
 
 ## There are other crates like the PE parser, why not use it?
-The answer is that I want a function that is easier to use.</br>
-Parsers like pelite and goblin are great, but I thought they were good for "analysis" and not for playing around with PE directly.</br>
-If it's a problem with my usage, give me an example. i will consider using a crate.</br>
+I am using pelite as a PE parser.</br>
+goblin was a little tricky for me.</br>
+pe-tools do a lot of memory writes, which are more unsafe than they are.</br>
+They are good for "analysis", pe-tools focuses on "manipulating" PE.</br>
 
 ## Usage
 `If you are interested in these, you should know how to use them`
