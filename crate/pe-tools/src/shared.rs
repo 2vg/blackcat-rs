@@ -164,3 +164,14 @@ pub fn ptr_to_str(p: &mut *mut u8) -> String {
         String::from_utf8(str).unwrap()
     }
 }
+
+pub fn from_wide_ptr(ptr: *const u16) -> String {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    unsafe {
+        assert!(!ptr.is_null());
+        let len = (0..std::isize::MAX).position(|i| *ptr.offset(i) == 0).unwrap();
+        let slice = std::slice::from_raw_parts(ptr, len);
+        OsString::from_wide(slice).to_string_lossy().into_owned()
+    }
+}

@@ -5,6 +5,11 @@ use std::mem::size_of;
 use std::ptr::null_mut;
 
 use anyhow::*;
+use ntapi::{
+    ntldr::LDR_DATA_TABLE_ENTRY,
+    ntpebteb::PEB,
+    winapi_local::um::winnt::__readgsqword
+};
 use pelite::pe64::{
     self, Pe,
     exports::GetProcAddress
@@ -245,8 +250,31 @@ impl PE_Container<'_> {
     }
 
     pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
-        let function_name = function_name.into();
-        Ok(self.pe.get_proc_address(&function_name)? as _)
+        unsafe {
+            let function_name = function_name.into();
+            let ppeb = __readgsqword(0x60) as *mut PEB;
+
+            let p_peb_ldr_data = (*ppeb).Ldr;
+            let mut module_list = (*p_peb_ldr_data).InLoadOrderModuleList.Flink as *mut LDR_DATA_TABLE_ENTRY;
+
+            while !(*module_list).DllBase.is_null() {
+                let dll_base = (*module_list).DllBase;
+
+                module_list = (*module_list).InLoadOrderLinks.Flink as *mut LDR_DATA_TABLE_ENTRY;
+
+                let dll_container = PE_Container::new(0x0 as _, dll_base);
+
+                let exports = dll_container.pe.exports();
+                if exports.is_err() { continue }
+
+                let fn_addr = dll_container.pe.get_proc_address(&function_name);
+                if fn_addr.is_err() { continue }
+
+                return Ok(fn_addr? as _)
+            }
+
+            bail!("could not find {}", function_name);
+        }
     }
 
     fn delta_relocation_closure<T: Fn(u64, &Delta) -> anyhow::Result<()>>(
