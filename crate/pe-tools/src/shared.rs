@@ -12,7 +12,13 @@ use ntapi::{
     ntpebteb::PEB,
     ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
 };
-use winapi::ctypes::c_void;
+use winapi::{
+    ctypes::c_void,
+    shared::{
+        minwindef::DWORD,
+        ntdef::PVOID
+    }
+};
 use winapi::shared::{
     minwindef::{FARPROC, HMODULE},
     ntdef::{HANDLE, LPCSTR},
@@ -81,8 +87,9 @@ impl Delta {
 // ".reloc" binary
 pub const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
 
-pub type pLoadLibraryA = fn(lpFileName: LPCSTR) -> HMODULE;
-pub type pGetProcAddress = fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
+pub type PLoadLibraryA = unsafe extern "system" fn(lpFileName: LPCSTR) -> HMODULE;
+pub type PGetProcAddress = unsafe extern "system" fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
+pub type TLS_CALLBACK = unsafe extern "system" fn(DllHandle: PVOID, Reason: DWORD, Reserved: PVOID);
 
 pub unsafe fn x96_check<T>(buffer: *mut T) -> X96 {
     let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *mut _);

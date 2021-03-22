@@ -27,13 +27,6 @@ use winapi::{
     }
 };
 
-#[derive(Debug, PartialEq)]
-pub enum X96 {
-    X86,
-    X64,
-    Unknown,
-}
-
 pub struct PE_Container<'a> {
     pub target_image_base: *mut c_void,
     pub pe: pelite::pe64::PeView<'a>,
@@ -137,7 +130,7 @@ impl PE_Container<'_> {
     }
 
     // TODO: check this is correct
-    pub fn resolve_import(&self, p_LoadLiberay: pLoadLibraryA, p_GetProcAdress: pGetProcAddress) -> anyhow::Result<()> {
+    pub fn resolve_import(&self, p_load_liberay: PLoadLibraryA, p_get_proc_adress: PGetProcAddress) -> anyhow::Result<()> {
         unsafe {
             let import_directory = self.pe.data_directory()[IMAGE_DIRECTORY_ENTRY_IMPORT as usize];
             let mut import_discriptor = (self.target_image_base as u64
@@ -146,7 +139,7 @@ impl PE_Container<'_> {
 
             while (*import_discriptor).Name != 0x0 {
                 let lib_name = (self.target_image_base as u32 + (*import_discriptor).Name) as LPCSTR;
-                let lib = p_LoadLiberay(lib_name);
+                let lib = p_load_liberay(lib_name);
 
                 let mut orig_thunk = (self.target_image_base as u64
                     + *(*import_discriptor).u.OriginalFirstThunk() as u64)
@@ -157,10 +150,10 @@ impl PE_Container<'_> {
                 while (*thunk).u1.AddressOfData() != &0x0 {
                     if orig_thunk != null_mut() && IMAGE_SNAP_BY_ORDINAL64(*(*orig_thunk).u1.Ordinal()) {
                         let fn_ordinal = IMAGE_ORDINAL64(*(*orig_thunk).u1.Ordinal()) as LPCSTR;
-                        *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, fn_ordinal) as _;
+                        *(*thunk).u1.Function_mut() = p_get_proc_adress(lib, fn_ordinal) as _;
                     } else {
                         let fn_name = (self.target_image_base as u64 + *(*thunk).u1.AddressOfData()) as *mut IMAGE_IMPORT_BY_NAME;
-                        *(*thunk).u1.Function_mut() = p_GetProcAdress(lib, (*fn_name).Name[0] as _) as _;
+                        *(*thunk).u1.Function_mut() = p_get_proc_adress(lib, (*fn_name).Name[0] as _) as _;
                     }
 
                     thunk = (thunk as usize + size_of::<DWORD64>()) as _;
@@ -240,16 +233,11 @@ impl PE_Container<'_> {
         for callback in self.pe.tls()?.callbacks()? {
             if *callback == 0 { continue }
             unsafe {
-                match std::mem::transmute::<*const c_void, PIMAGE_TLS_CALLBACK>(*(*callback as *const *const c_void)) {
-                    Some(cb) => {
-                        cb(
-                            self.target_image_base,
-                            DLL_PROCESS_ATTACH,
-                            0 as _,
-                        );
-                    },
-                    None => continue
-                }
+                std::mem::transmute::<*const c_void, TLS_CALLBACK>(*(*callback as *const *const c_void))(
+                    self.target_image_base,
+                    DLL_PROCESS_ATTACH,
+                    0 as _,
+                );
             }
         }
 
