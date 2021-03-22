@@ -180,57 +180,16 @@ impl PE_Container<'_> {
         &self,
         delta: Delta
     ) -> anyhow::Result<()> {
-        unsafe {
-            for section in self.pe.section_headers().image() {
-                if section.Name != DOT_RELOC {
-                    continue;
+        Ok(unsafe {
+            self.delta_relocation_closure(delta, |target, delta| {
+                if delta.is_minus {
+                    *(target as *mut u64) = *(target as *mut u64) - delta.offset as u64;
+                } else {
+                    *(target as *mut u64) = *(target as *mut u64) + delta.offset as u64;
                 }
-
-                let reloc_address = section.PointerToRawData as u64;
-                let mut offset = 0 as u64;
-                let reloc_data = self.pe.data_directory()[IMAGE_DIRECTORY_ENTRY_BASERELOC as usize];
-
-                while offset < reloc_data.Size as u64 {
-                    let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(
-                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
-                            as *const _,
-                    );
-
-                    offset = offset + std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u64;
-
-                    // 2 is relocation entry size.
-                    // ref: https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#base-relocation-types
-                    let entry_count = (block_header.BlockSize
-                        - std::mem::size_of::<BASE_RELOCATION_BLOCK>() as u32)
-                        / 2;
-
-                    let block_entry = std::slice::from_raw_parts::<[u8; 2]>(
-                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
-                            as *const _,
-                        entry_count as usize,
-                    );
-
-                    for block in block_entry {
-                        let block = BASE_RELOCATION_ENTRY(*block);
-
-                        offset = offset + 2;
-
-                        if block.block_type() == 0 {
-                            continue;
-                        }
-
-                        let target = self.target_image_base as u64 + block_header.PageAddress as u64 + block.offset() as u64;
-                        if delta.is_minus {
-                            *(target as *mut u64) = *(target as *mut u64) - delta.offset as u64;
-                        } else {
-                            *(target as *mut u64) = *(target as *mut u64) + delta.offset as u64;
-                        }
-                    }
-                }
-            }
-
-            Ok(())
-        }
+                Ok(())
+            })?;
+        })
     }
 
     // TODO: rewrite with pelite
@@ -238,6 +197,53 @@ impl PE_Container<'_> {
         &self,
         hp: *mut c_void,
         delta: Delta
+    ) -> anyhow::Result<()> {
+        Ok(unsafe {
+            self.delta_relocation_closure(delta, |target, delta| {
+                let mut d_buffer = 0 as u64;
+
+                if ReadProcessMemory(
+                    hp,
+                    (target) as PVOID,
+                    &mut d_buffer as *const _ as *mut _,
+                    size_of::<u64>(),
+                    null_mut(),
+                ) == 0
+                {
+                    bail!("could not read memory from new dest image.")
+                }
+                
+                d_buffer = if delta.is_minus {
+                    d_buffer - delta.offset as u64
+                } else {
+                    d_buffer + delta.offset as u64
+                };
+
+                if WriteProcessMemory(
+                    hp,
+                    (target) as PVOID,
+                    &mut d_buffer as *const _ as *mut _,
+                    size_of::<u64>(),
+                    null_mut(),
+                ) == 0
+                {
+                    bail!("could not write memory to new dest image.")
+                }
+
+                Ok(())
+            })?;
+        })
+    }
+
+    pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
+        let function_name = function_name.into();
+        Ok(self.pe.get_proc_address(&function_name)? as _)
+    }
+
+    fn delta_relocation_closure<T: Fn(u64, &Delta) -> anyhow::Result<()>>(
+        &self,
+        delta: Delta,
+        process_fn: T
     ) -> anyhow::Result<()> {
         unsafe {
             for section in self.pe.section_headers().image() {
@@ -278,47 +284,12 @@ impl PE_Container<'_> {
                             continue;
                         }
 
-                        let field_address = block_header.PageAddress as u64 + block.offset() as u64;
-
-                        let mut d_buffer = 0 as u64;
-
-                        if ReadProcessMemory(
-                            hp,
-                            (self.target_image_base as u64 + field_address) as PVOID,
-                            &mut d_buffer as *const _ as *mut _,
-                            size_of::<u64>(),
-                            null_mut(),
-                        ) == 0
-                        {
-                            bail!("could not read memory from new dest image.")
-                        }
-
-                        d_buffer = if delta.is_minus {
-                            d_buffer - delta.offset as u64
-                        } else {
-                            d_buffer + delta.offset as u64
-                        };
-
-                        if WriteProcessMemory(
-                            hp,
-                            (self.target_image_base as u64 + field_address) as PVOID,
-                            &mut d_buffer as *const _ as *mut _,
-                            size_of::<u64>(),
-                            null_mut(),
-                        ) == 0
-                        {
-                            bail!("could not write memory to new dest image.")
-                        }
+                        process_fn(self.target_image_base as u64 + block_header.PageAddress as u64 + block.offset() as u64, &delta)?;
                     }
                 }
             }
-
-            Ok(())
         }
-    }
 
-    pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
-        let function_name = function_name.into();
-        Ok(self.pe.get_proc_address(&function_name)? as _)
+        Ok(())
     }
 }
