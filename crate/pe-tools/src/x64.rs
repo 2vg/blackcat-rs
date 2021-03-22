@@ -4,11 +4,11 @@ use crate::shared::*;
 use std::mem::size_of;
 use std::ptr::null_mut;
 
-use pelite::*;
-use pelite::pe64::Pe;
-use pelite::pe64::exports::GetProcAddress;
-
 use anyhow::*;
+use pelite::pe64::{
+    self, Pe,
+    exports::GetProcAddress
+};
 use winapi::{
     ctypes::c_void,
     shared::{
