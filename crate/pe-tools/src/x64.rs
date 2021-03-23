@@ -174,26 +174,20 @@ impl PE_Container<'_> {
         }
     }
 
+    // TODO: rewrite with pelite
     pub fn delta_relocation(
         &self,
         delta: Delta
     ) -> anyhow::Result<()> {
         Ok(unsafe {
-            let target_base_container = PE_Container::<'_>::new(0x0 as _, self.target_image_base);
-            let base_relocs = target_base_container.pe.base_relocs()?;
-            for block in base_relocs.iter_blocks() {
-                let va = block.image().VirtualAddress as u64;
-                for reloc_list in block.words() {
-                    let offset = block.rva_of(reloc_list) as u64;
-                    let addr = self.target_image_base as u64 + va + offset;
-
-                    if delta.is_minus && (addr > delta.offset as _) {
-                        *(addr as *mut u64) = *(addr as *mut u64) - delta.offset as u64;
-                    } else {
-                        *(addr as *mut u64) = *(addr as *mut u64) + delta.offset as u64;
-                    }
+            self.delta_relocation_closure(self.target_image_base, delta, |target, delta| {
+                if delta.is_minus {
+                    *(target as *mut u64) = *(target as *mut u64) - delta.offset as u64;
+                } else {
+                    *(target as *mut u64) = *(target as *mut u64) + delta.offset as u64;
                 }
-            }
+                Ok(())
+            })?;
         })
     }
 
@@ -204,7 +198,7 @@ impl PE_Container<'_> {
         delta: Delta
     ) -> anyhow::Result<()> {
         Ok(unsafe {
-            self.delta_relocation_closure(delta, |target, delta| {
+            self.delta_relocation_closure(self.payload_buffer, delta, |target, delta| {
                 let mut d_buffer = 0 as u64;
 
                 if ReadProcessMemory(
@@ -285,6 +279,7 @@ impl PE_Container<'_> {
 
     fn delta_relocation_closure<T: Fn(u64, &Delta) -> anyhow::Result<()>>(
         &self,
+        block_buffer: *mut c_void,
         delta: Delta,
         process_fn: T
     ) -> anyhow::Result<()> {
@@ -300,7 +295,7 @@ impl PE_Container<'_> {
 
                 while offset < reloc_data.Size as u64 {
                     let block_header = std::ptr::read::<BASE_RELOCATION_BLOCK>(
-                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
+                        (block_buffer as usize + (reloc_address + offset) as usize)
                             as *const _,
                     );
 
@@ -313,7 +308,7 @@ impl PE_Container<'_> {
                         / 2;
 
                     let block_entry = std::slice::from_raw_parts::<[u8; 2]>(
-                        (self.payload_buffer as usize + (reloc_address + offset) as usize)
+                        (block_buffer as usize + (reloc_address + offset) as usize)
                             as *const _,
                         entry_count as usize,
                     );
