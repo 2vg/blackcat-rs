@@ -11,6 +11,7 @@ pe-tools = { path = "../pe-tools" }
 winapi = { version = "0.3.9", features = ["winuser"] }
 ntapi = { version = "0.3.6", features = ["nightly"] }
 anyhow = "1.0.39"
+pelite = "0.9.0"
 
 [lib]
 name = "dll64"
