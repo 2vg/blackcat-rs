@@ -11,6 +11,7 @@ use bitfield;
 use ntapi::{
     ntpebteb::PEB,
     ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
+    winapi_local::um::winnt::__readfsdword
 };
 use winapi::{
     ctypes::c_void,
@@ -29,16 +30,6 @@ use winapi::um::{
         IMAGE_DOS_HEADER, IMAGE_NT_HEADERS,
     },
 };
-
-pub fn get_binary_from_file(file_name: impl Into<String>) -> Result<Vec<u8>> {
-    let file_name = file_name.into();
-    let mut f = File::open(&file_name)
-        .with_context(|| format!("could not opening the file: {}", &file_name))?;
-    let mut buffer = Vec::new();
-    f.read_to_end(&mut buffer)
-        .with_context(|| format!("could not reading from the file: {}", &file_name))?;
-    Ok(buffer)
-}
 
 #[derive(Debug, PartialEq)]
 pub enum X96 {
@@ -90,6 +81,16 @@ pub const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
 pub type PLoadLibraryA = unsafe extern "system" fn(lpFileName: LPCSTR) -> HMODULE;
 pub type PGetProcAddress = unsafe extern "system" fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
 pub type TLS_CALLBACK = unsafe extern "system" fn(DllHandle: PVOID, Reason: DWORD, Reserved: PVOID);
+
+pub fn get_binary_from_file(file_name: impl Into<String>) -> Result<Vec<u8>> {
+    let file_name = file_name.into();
+    let mut f = File::open(&file_name)
+        .with_context(|| format!("could not opening the file: {}", &file_name))?;
+    let mut buffer = Vec::new();
+    f.read_to_end(&mut buffer)
+        .with_context(|| format!("could not reading from the file: {}", &file_name))?;
+    Ok(buffer)
+}
 
 pub unsafe fn x96_check<T>(buffer: *mut T) -> X96 {
     let dos_header = std::ptr::read::<IMAGE_DOS_HEADER>(buffer as *mut _);
@@ -148,6 +149,60 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_
     } else {
         bail!("Error. could not get image address.")
     }
+}
+/*
+pub fn search_syscall(syscall_name: impl Into<String>, is_64bit: bool) -> Result<Vec<u8>> {
+    let syscall_name = syscall_name.into();
+
+    let ntdll = if is_64bit {
+        "c:\\windows\\system32\\ntdll.dll"
+    } else {
+        "c:\\windows\\SysWOW64\\ntdll.dll"
+    };
+
+    let ntdll_buffer = get_binary_from_file(ntdll)?;
+
+    let pe = goblin::pe::PE::parse(&ntdll_buffer)?;
+
+    for e in pe.exports {
+        match e.name {
+            Some(symbol) => {
+                if symbol == syscall_name {
+                    if pe.is_64 {
+                        let syscall_number = ntdll_buffer[e.offset + 4];
+                        /*
+                         *    asm
+                         *    mov    r10, rcx
+                         *    mov    eax, syscall_number
+                         *    syscall
+                         *    ret
+                         */
+                        let b = [
+                            0x4C, 0x8B, 0xD1,
+                            0xB8, syscall_number,  0x0, 0x0, 0x0,
+                            0xF, 0x5,
+                            0xC3
+                        ];
+                    } else {
+                        let b = [0];
+                    }
+                    println!("fs: 0x{:x}", unsafe { __readfsdword(0xC0) });
+                    println!("0x{:x}", e.offset);
+                    for i in 0..12 {
+                        print!("0x{:x} ", ntdll_buffer[e.offset + i]);
+                    }
+                }
+            },
+            None => {}
+        }
+    }
+
+    Ok(Vec::new())
+}
+*/
+
+pub fn ptr_to_u8slice(p: *mut c_void) -> &'static [u8] {
+    unsafe { std::mem::transmute_copy::<*mut c_void, &[u8]>(&p) }
 }
 
 pub fn ptr_to_fn<T>(p: *mut c_void) -> T {

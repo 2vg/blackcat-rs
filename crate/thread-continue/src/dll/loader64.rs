@@ -40,17 +40,17 @@ pub fn __reflective_load() -> Result<()> {
     unsafe {
         let ppeb = __readgsqword(0x60) as *mut PEB;
         let my_base_address = (*ppeb).ImageBaseAddress;
-        let mut container = PE_Container::new(0x0 as _, my_base_address);
+        let mut container = PE_Container::new(0x0 as _, my_base_address)?;
 
-        let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(container.search_proc_address("LoadLibraryA")?);
-        let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(container.search_proc_address("GetProcAddress")?);
-        let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(container.search_proc_address("VirtualAlloc")?);
-        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(container.search_proc_address("NtFlushInstructionCache")?);
+        let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(search_proc_address("LoadLibraryA")?);
+        let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(search_proc_address("GetProcAddress")?);
+        let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(search_proc_address("VirtualAlloc")?);
+        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(search_proc_address("NtFlushInstructionCache")?);
 
-        let mut allocated = pVirtualAlloc(container.payload_base(), container.get_payload_optional_headers().SizeOfImage as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        let mut allocated = pVirtualAlloc(container.payload_base_address(), container.get_payload_image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
         if allocated as u64 == 0x0 as u64 {
-            allocated = pVirtualAlloc(null_mut(), container.get_payload_optional_headers().SizeOfImage as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            allocated = pVirtualAlloc(null_mut(), container.get_payload_image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
         };
 
         if allocated as u64 == 0x0 as u64 {
@@ -59,7 +59,7 @@ pub fn __reflective_load() -> Result<()> {
 
         container.change_target_image_base(allocated);
 
-        let delta = Delta::calculate_delta(container.target_image_base as _, container.payload_base() as _);
+        let delta = Delta::calculate_delta(container.target_base_address() as _, container.payload_base_address() as _);
         container.delta_relocation(delta)?;
 
         container.resolve_import(pLoadLibraryA, pGetProcAddress)?;
@@ -70,10 +70,10 @@ pub fn __reflective_load() -> Result<()> {
 
         // TODO: register exception handler
 
-        let p_dll_main = container.target_image_base as u64 + container.get_payload_optional_headers().AddressOfEntryPoint as u64;
+        let p_dll_main = container.target_base_address() as u64 + container.pe.entry as u64;
         let dll_main = ptr_to_fn::<DllMain>(p_dll_main as _);
 
-        dll_main(container.target_image_base as _, DLL_PROCESS_ATTACH, 1 as _);
+        dll_main(container.target_base_address() as _, DLL_PROCESS_ATTACH, 1 as _);
 
         Ok(())
     }
