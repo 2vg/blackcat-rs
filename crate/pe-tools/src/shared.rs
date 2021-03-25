@@ -150,56 +150,6 @@ pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_
         bail!("Error. could not get image address.")
     }
 }
-/*
-pub fn search_syscall(syscall_name: impl Into<String>, is_64bit: bool) -> Result<Vec<u8>> {
-    let syscall_name = syscall_name.into();
-
-    let ntdll = if is_64bit {
-        "c:\\windows\\system32\\ntdll.dll"
-    } else {
-        "c:\\windows\\SysWOW64\\ntdll.dll"
-    };
-
-    let ntdll_buffer = get_binary_from_file(ntdll)?;
-
-    let pe = goblin::pe::PE::parse(&ntdll_buffer)?;
-
-    for e in pe.exports {
-        match e.name {
-            Some(symbol) => {
-                if symbol == syscall_name {
-                    if pe.is_64 {
-                        let syscall_number = ntdll_buffer[e.offset + 4];
-                        /*
-                         *    asm
-                         *    mov    r10, rcx
-                         *    mov    eax, syscall_number
-                         *    syscall
-                         *    ret
-                         */
-                        let b = [
-                            0x4C, 0x8B, 0xD1,
-                            0xB8, syscall_number,  0x0, 0x0, 0x0,
-                            0xF, 0x5,
-                            0xC3
-                        ];
-                    } else {
-                        let b = [0];
-                    }
-                    println!("fs: 0x{:x}", unsafe { __readfsdword(0xC0) });
-                    println!("0x{:x}", e.offset);
-                    for i in 0..12 {
-                        print!("0x{:x} ", ntdll_buffer[e.offset + i]);
-                    }
-                }
-            },
-            None => {}
-        }
-    }
-
-    Ok(Vec::new())
-}
-*/
 
 pub fn ptr_to_u8slice(p: *mut c_void) -> &'static [u8] {
     unsafe { std::mem::transmute_copy::<*mut c_void, &[u8]>(&p) }
@@ -229,4 +179,59 @@ pub fn from_wide_ptr(ptr: *const u16) -> String {
         let slice = std::slice::from_raw_parts(ptr, len);
         OsString::from_wide(slice).to_string_lossy().into_owned()
     }
+}
+
+pub fn search_syscall<T>(syscall_name: impl Into<String>, is_64bit: bool) -> Result<T> {
+    let syscall_name = syscall_name.into();
+
+    let ntdll = if is_64bit {
+        "c:\\windows\\system32\\ntdll.dll"
+    } else {
+        "c:\\windows\\SysWOW64\\ntdll.dll"
+    };
+
+    let ntdll_buffer = get_binary_from_file(ntdll).with_context(|| format!("could not find ntdll. path: {}", ntdll))?;
+
+    let pe = goblin::pe::PE::parse(&ntdll_buffer).with_context(|| format!("could not parse ntdll. path: {}", ntdll))?;
+
+    for e in pe.exports {
+        match e.name {
+            Some(symbol) => {
+                if symbol == syscall_name {
+                    if pe.is_64 {
+                        if ntdll_buffer[e.offset .. e.offset + 3] == [0x4C, 0x8B, 0xD1] {
+                            let syscall_number = ntdll_buffer[e.offset + 4];
+                            //print!("number: 0x{:x} ", syscall_number);
+                            /*
+                             *    mov    r10, rcx
+                             *    mov    eax, syscall_number
+                             *    syscall
+                             *    ret
+                             */
+                            let b = [
+                                0x4C, 0x8B, 0xD1,
+                                0xB8, syscall_number,  0x0, 0x0, 0x0,
+                                0xF, 0x5,
+                                0xC3
+                            ];
+
+                            return Ok(ptr_to_fn::<T>(&b[0] as *const _ as _))
+                        } else {
+                            bail!("found function, but could not get syscall number. function name: {}", syscall_name);
+                        }
+                    } else {
+                        //println!("fs: 0x{:x}", unsafe { __readfsdword(0xC0) });
+                        //let b = [0];
+                    }
+                    //println!("0x{:x}", e.offset);
+                    //for i in 0..12 {
+                    //    print!("0x{:x} ", ntdll_buffer[e.offset + i]);
+                    //}
+                }
+            },
+            None => { continue }
+        }
+    }
+
+    bail!("not found function. function name: {}", syscall_name);
 }
