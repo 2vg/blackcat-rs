@@ -38,15 +38,18 @@ pub extern "system" fn reflective_load() -> bool {
 
 pub fn __reflective_load() -> Result<()> {
     unsafe {
+        // 1: get image base address of own, create pe container
         let ppeb = __readgsqword(0x60) as *mut PEB;
         let my_base_address = (*ppeb).ImageBaseAddress;
         let mut container = PE_Container::new(0x0 as _, my_base_address)?;
 
+        // 2: get address needed by the loading process
         let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(search_proc_address("LoadLibraryA")?);
         let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(search_proc_address("GetProcAddress")?);
         let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(search_proc_address("VirtualAlloc")?);
         let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(search_proc_address("NtFlushInstructionCache")?);
 
+        // 3: allocate new v memory, and change target base address to it
         let mut allocated = pVirtualAlloc(container.payload_base_address(), container.get_payload_image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
         if allocated as u64 == 0x0 as u64 {
@@ -59,17 +62,32 @@ pub fn __reflective_load() -> Result<()> {
 
         container.change_target_image_base(allocated);
 
+        // 4: copy over headers
+        container.copy_headers()?;
+
+        // 5: copy over section headers
+        container.copy_section_headers()?;
+
+        // 6: calculate delta, then relocate it if needed.(this is need in almost case)
         let delta = Delta::calculate_delta(container.target_base_address() as _, container.payload_base_address() as _);
         container.delta_relocation(delta)?;
 
+        // 7: resolve import table
         container.resolve_import(pLoadLibraryA, pGetProcAddress)?;
 
+        // TODO: 8: resolve delayed import?
+
+        // TODO: 9: call protect memory?
+
+        // 10: flush the instruction cache to avoid stale code being used
         pNtFlushInstructionCache(-1 as _, null_mut(), 0);
 
+        // 11: execute tls callbacks
         container.exec_tls_callback()?;
 
-        // TODO: register exception handler
+        // TODO: 12: register exception handler?
 
+        // 13: call DllMain
         let p_dll_main = container.target_base_address() as u64 + container.pe.entry as u64;
         let dll_main = ptr_to_fn::<DllMain>(p_dll_main as _);
 
