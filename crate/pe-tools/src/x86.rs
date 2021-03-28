@@ -217,6 +217,25 @@ impl PE_Container<'_> {
         }
     }
 
+    pub fn search_proc_address(&self, function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
+        unsafe {
+            let function_name = function_name.into();
+
+            for e in &self.pe.exports {
+                match e.name {
+                    Some(symbol) => {
+                        if symbol == function_name {
+                            return Ok((self.payload_base_address() as usize + e.offset) as _);
+                        }
+                    },
+                    None => {}
+                }
+            }
+
+            bail!("could not find {}", function_name);
+        }
+    }
+
     pub fn delta_relocation(
         &self,
         delta: Delta
@@ -328,7 +347,7 @@ impl PE_Container<'_> {
     }
 }
 
-pub fn search_proc_from_loaded_module<T>(function_name: impl Into<String>) -> anyhow::Result<T> {
+pub fn search_proc_address_from_loaded_module(function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
     unsafe {
         let function_name = function_name.into();
         let ppeb = __readfsdword(0x30) as *mut PEB32;
@@ -357,7 +376,7 @@ pub fn search_proc_from_loaded_module<T>(function_name: impl Into<String>) -> an
                 match e.name {
                     Some(symbol) => {
                         if symbol == function_name {
-                            return Ok(ptr_to_fn::<T>((dll_base as usize + e.offset) as _));
+                            return Ok((dll_base as usize + e.offset) as _);
                         }
                     },
                     None => {}
