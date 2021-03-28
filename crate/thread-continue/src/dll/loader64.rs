@@ -44,10 +44,10 @@ pub fn __reflective_load() -> Result<()> {
         let mut container = PE_Container::new(0x0 as _, my_base_address)?;
 
         // 2: get address needed by the loading process
-        let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(search_proc_address("LoadLibraryA")?);
-        let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(search_proc_address("GetProcAddress")?);
-        let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(search_proc_address("VirtualAlloc")?);
-        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(search_proc_address("NtFlushInstructionCache")?);
+        let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(search_proc_address_from_loaded_module("LoadLibraryA")?);
+        let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(search_proc_address_from_loaded_module("GetProcAddress")?);
+        let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(search_proc_address_from_loaded_module("VirtualAlloc")?);
+        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(search_proc_address_from_loaded_module("NtFlushInstructionCache")?);
 
         // 3: allocate new v memory, and change target base address to it
         let mut allocated = pVirtualAlloc(container.payload_base_address(), container.get_payload_image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
