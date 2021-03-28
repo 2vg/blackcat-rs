@@ -14,8 +14,7 @@ so, please be careful when using it.</br>
 
 ## There are other crates like the PE parser, why not use it?
 I am using goblin as a PE parser.</br>
-goblin was a little tricky for me.</br>
-pe-tools do a lot of memory writes, which are more unsafe than they are.</br>
+pe-tools do a lot of memory writes, which are more, ah no, very very unsafe than they are.</br>
 They are good for "analysis", pe-tools focuses on "manipulating" PE.</br>
 
 ## Usage
