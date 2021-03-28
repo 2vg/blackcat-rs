@@ -1,6 +1,7 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::ptr::null_mut;
 
@@ -24,7 +25,6 @@ use winapi::{
     um::{
         memoryapi::{ReadProcessMemory, WriteProcessMemory},
         winnt::{
-            IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_IMPORT,
             IMAGE_ORDINAL64, IMAGE_IMPORT_BY_NAME, IMAGE_IMPORT_DESCRIPTOR,
             IMAGE_DOS_HEADER, IMAGE_NT_HEADERS64,
             IMAGE_SNAP_BY_ORDINAL64, IMAGE_THUNK_DATA64,
@@ -328,7 +328,7 @@ impl PE_Container<'_> {
     }
 }
 
-pub fn search_proc_address(function_name: impl Into<String>) -> anyhow::Result<*mut c_void> {
+pub fn search_proc_from_loaded_module<T>(function_name: impl Into<String>) -> anyhow::Result<T> {
     unsafe {
         let function_name = function_name.into();
         let ppeb = __readgsqword(0x60) as *mut PEB;
@@ -338,16 +338,26 @@ pub fn search_proc_address(function_name: impl Into<String>) -> anyhow::Result<*
 
         while !(*module_list).DllBase.is_null() {
             let dll_base = (*module_list).DllBase;
+            let size = (*module_list).SizeOfImage as usize;
 
             module_list = (*module_list).InLoadOrderLinks.Flink as *mut LDR_DATA_TABLE_ENTRY;
 
-            let dll_container = PE_Container::new(0x0 as _, dll_base)?;
+            let buffer = std::slice::from_raw_parts::<u8>(dll_base as _, size);
 
-            for e in &dll_container.pe.exports {
+            let opts = goblin::pe::options::ParseOptions{ resolve_rva: false };
+            let res = goblin::pe::PE::parse_with_opts(buffer, &opts);
+
+            // temp solution
+            if res.is_err() { continue }
+            let parsed = res?;
+
+            if !parsed.is_lib { continue }
+
+            for e in parsed.exports {
                 match e.name {
                     Some(symbol) => {
                         if symbol == function_name {
-                            return Ok(dll_container.to_va(e.offset as _));
+                            return Ok(ptr_to_fn::<T>((dll_base as usize + e.offset) as _));
                         }
                     },
                     None => {}
@@ -356,5 +366,66 @@ pub fn search_proc_address(function_name: impl Into<String>) -> anyhow::Result<*
         }
 
         bail!("could not find {}", function_name);
+    }
+}
+
+pub fn get_syscall_table() -> anyhow::Result<HashMap<String, usize>> {
+    unsafe {
+        let mut function_table = HashMap::new();
+        let ppeb = __readgsqword(0x60) as *mut PEB;
+
+        let p_peb_ldr_data = (*ppeb).Ldr;
+        let mut module_list = (*p_peb_ldr_data).InLoadOrderModuleList.Flink as *mut LDR_DATA_TABLE_ENTRY;
+
+        while !(*module_list).DllBase.is_null() {
+            let dll_base = (*module_list).DllBase;
+            let size = (*module_list).SizeOfImage as usize;
+
+            module_list = (*module_list).InLoadOrderLinks.Flink as *mut LDR_DATA_TABLE_ENTRY;
+
+            let buffer = std::slice::from_raw_parts::<u8>(dll_base as _, size);
+
+            let opts = goblin::pe::options::ParseOptions{ resolve_rva: false };
+            let res = goblin::pe::PE::parse_with_opts(buffer, &opts);
+
+            // temp solution
+            if res.is_err() { continue }
+            let parsed = res?;
+
+            if !parsed.is_lib && parsed.name.unwrap() != "ntdll.dll" { continue }
+
+            for e in parsed.exports {
+                match e.name {
+                    Some(symbol) => {
+                        if symbol.len() < 2 { continue }
+
+                        let sym_0 = symbol.chars().nth(0).unwrap();
+                        let sym_1 = symbol.chars().nth(1).unwrap();
+
+                        if (sym_0 == 'Z') && sym_1 == 'w' {
+                            let mut function_name = symbol.to_string();
+
+                            if symbol.chars().nth(0).unwrap() != 'N' { function_name.replace_range(0..2, "Nt"); };
+
+                            function_table.insert(function_name, e.offset);
+                        }
+                    },
+                    None => {}
+                }
+            }
+
+            let mut function_table_vec: Vec<(String, usize)> = function_table.into_iter().collect();
+            function_table_vec.sort_by(|x, y| x.1.cmp(&y.1));
+
+            let mut syscall_table = HashMap::new();
+
+            for (i, val) in function_table_vec.into_iter().enumerate() {
+                syscall_table.insert(val.0, i);
+            }
+
+            return Ok(syscall_table);
+        }
+
+        bail!("could not find ntdll");
     }
 }
