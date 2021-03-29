@@ -10,6 +10,8 @@ A kind of RunPE technique that hollows out a Process and executes another code.
 This code was written in Rust based on [m0n0ph1/Process-Hollowing](https://github.com/m0n0ph1/Process-Hollowing).</br>
 The original checked only Eax at the entry point, so it looked like 32bit.</br>
 I made it compatible with 64bit.</br>
+It also includes minor fixes and fixes when the base address is different.</br>
+Currently, only file to file functions are implemented.</br>
 
 payload-sample.exe is crate/payload-sample.</br>
 But yes, I can't prove that it's not a real bad sample here, so set your own responsibility or put another payload yourself.</br>
@@ -29,11 +31,12 @@ for 64bit to 64bit:
 ![alt](./images/sample_64_to_64.gif)
 
 ## Todo
-- [ ] refactoring code
+- [x] refactoring code
 - [x] 32bit -> 32bit
 - [x] 64bit -> 64bit
-- [ ] 32bit -> 64bit (currently researching)
-- [ ] 64bit -> 32bit
+- [ ] create the function from binary
+- [ ] 32bit -> 64bit (someday, low priority)
+- [ ] 64bit -> 32bit (someday, low priority)
 
 ## Contribute
 WELCOME ANYTIME
