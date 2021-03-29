@@ -438,7 +438,6 @@ pub fn get_syscall_table() -> anyhow::Result<HashMap<String, usize>> {
             //if res.is_err() { continue }
             let parsed = res?;
 
-            println!("debug: {:?}", parsed.exports.len());
             if !parsed.is_lib || parsed.name.unwrap() != "ntdll.dll" { continue }
 
             for e in parsed.exports {
