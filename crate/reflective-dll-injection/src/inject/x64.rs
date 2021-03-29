@@ -6,8 +6,8 @@ use pelite::pe64::exports::GetProcAddress;
 use winapi::ctypes::c_void;
 
 pub fn get_loader_offset(dll_base_address: *mut c_void) -> Result<*mut c_void> {
-    let dll_container = x64::PE_Container::new(0x0 as _, dll_base_address)?;
-    let loader = dll_container.search_proc_address("reflective_load");
+    let dll_container = x64::PEContainer::new(dll_base_address, true)?;
+    let loader = dll_container.search_expoted_func("reflective_load");
 
     if loader.is_ok() {
         Ok(loader.unwrap() as _)

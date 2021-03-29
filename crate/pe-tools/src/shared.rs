@@ -10,8 +10,7 @@ use anyhow::*;
 use bitfield;
 use ntapi::{
     ntpebteb::PEB,
-    ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
-    winapi_local::um::winnt::__readfsdword
+    ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION}
 };
 use winapi::{
     ctypes::c_void,
@@ -123,31 +122,42 @@ pub unsafe fn check_same_architecture(target: *mut c_void, src: *mut c_void) -> 
     Ok(())
 }
 
-pub unsafe fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_void> {
-    let mut pbi = zeroed::<PROCESS_BASIC_INFORMATION>();
-    let mut peb = zeroed::<PEB>();
+pub fn get_remote_peb_base_address(h_process: HANDLE) -> Result<*mut PEB> {
+    unsafe {
+        let mut pbi = zeroed::<PROCESS_BASIC_INFORMATION>();
 
-    NtQueryInformationProcess(
-        h_process,
-        0,
-        &mut pbi as *const _ as *mut _,
-        size_of::<PROCESS_BASIC_INFORMATION>() as _,
-        null_mut(),
-    );
+        if NtQueryInformationProcess(
+            h_process,
+            0,
+            &mut pbi as *const _ as *mut _,
+            size_of::<PROCESS_BASIC_INFORMATION>() as _,
+            null_mut(),
+        ) == 0 {
+            Ok(pbi.PebBaseAddress)
+        } else {
+            bail!("Error. could not get image address.")
+        }
+    }
+}
 
-    let peb_address = pbi.PebBaseAddress;
+pub fn get_remote_image_base_address(h_process: HANDLE) -> Result<*mut c_void> {
+    unsafe {
+        let mut peb = zeroed::<PEB>();
 
-    if ReadProcessMemory(
-        h_process,
-        peb_address as *mut c_void,
-        &mut peb as *const _ as *mut _,
-        size_of::<PEB>(),
-        null_mut(),
-    ) == 1
-    {
-        Ok(peb.ImageBaseAddress)
-    } else {
-        bail!("Error. could not get image address.")
+        let peb_address = get_remote_peb_base_address(h_process)?;
+
+        if ReadProcessMemory(
+            h_process,
+            peb_address as *mut c_void,
+            &mut peb as *const _ as *mut _,
+            size_of::<PEB>(),
+            null_mut(),
+        ) == 1
+        {
+            Ok(peb.ImageBaseAddress)
+        } else {
+            bail!("Error. could not get image address.")
+        }
     }
 }
 

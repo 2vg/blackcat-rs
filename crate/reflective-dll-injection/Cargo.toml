@@ -1,5 +1,5 @@
 [package]
-name = "thread-continue"
+name = "reflective-dll-injection"
 version = "0.1.0"
 authors = ["uru <mail@nyaa.gg>"]
 edition = "2018"
