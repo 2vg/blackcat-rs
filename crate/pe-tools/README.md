@@ -20,5 +20,14 @@ They are good for "analysis", pe-tools focuses on "manipulating" PE.</br>
 ## Usage
 `If you are interested in these, you should know how to use them`
 
+## info
+shared:</br>
+contains methods shared by x86 and 64 and util functions</br>
+</br>
+x86, x64:</br>
+Most of the methods for PE manipulations are here.</br>
+contains the main PEContainer structure and a few util functions.</br>
+x86 and x64 are almost the same code, but it's split into two because some structures have different types and pointer sizes.</br>
+
 ## Contribute
 WELCOME ANYTIME
