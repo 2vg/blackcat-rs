@@ -41,14 +41,15 @@ WELCOME ANYTIME
 ## Todo
 
 - [x] hollow (almost. 32->64 and 64->32 are not support for now. i will research it.)
+- [ ] pe tool (for manupilations, currently, added some function but still WIP :) )
 - [ ] other 2 or 3 injection methods (yes, for like a crypter)
 - [ ] create simple crypter ..1
-- [ ] reverse tcp with e2e connection
+- [ ] reverse tcp with e2e connection (done researched)
 - [ ] create simple rat
 - [ ] r00t\*\*\*
 - [ ] research c\*\*\*\*t s\*\*\*\*e
 - [ ] research b\*\*\*k dll
-- [ ] w*n hook
+- [x] w*n hook
 - [ ] km ..2
 
 .. etc.
