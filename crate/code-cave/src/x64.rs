@@ -120,8 +120,6 @@ pub fn inject(hp: HANDLE, ht: HANDLE, lib: impl Into<String>) -> Result<()>{
 
         GetThreadContext(ht, &mut ctx as *mut _);
 
-        println!("rip: {:x}", ctx.Rip);
-
         let old_rip = transmute::<u64, [u8; 8]>(ctx.Rip.to_le());
 
         ctx.Rip = stub_addr as _;
