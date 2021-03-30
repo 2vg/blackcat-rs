@@ -8,6 +8,7 @@ edition = "2018"
 
 [workspace]
 members = [
+    "crate/code-cave",
     "crate/pe-tools",
     "crate/payload-sample",
     "crate/process-hide",
