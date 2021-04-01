@@ -40,6 +40,7 @@ WELCOME ANYTIME
 
 ## Todo
 
+- [x] some UAC bypass (research is almost done, will push the code.)
 - [x] hollow (almost. 32->64 and 64->32 are not support for now. i will research it.)
 - [ ] pe tool (for manupilations, currently, added some function but still WIP :) )
 - [ ] other 2 or 3 injection methods (yes, for like a crypter)
