@@ -48,7 +48,7 @@ WELCOME ANYTIME
 - [ ] reverse tcp with e2e connection (done researched)
 - [ ] create simple rat
 - [ ] r00t\*\*\*
-- [ ] research c\*\*\*\*t s\*\*\*\*e
+- [x] ~~research c\*\*\*\*t s\*\*\*\*e~~ (was not interested)
 - [ ] research b\*\*\*k dll
 - [x] w*n hook
 - [ ] km ..2
