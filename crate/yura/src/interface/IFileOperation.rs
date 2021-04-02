@@ -1,7 +1,4 @@
-use winapi::shared::{
-    minwindef::DWORD,
-    ntdef::LPCWSTR,
-};
+use winapi::shared::{minwindef::DWORD, ntdef::LPCWSTR};
 use winapi::{
     ctypes::c_void,
     shared::{guiddef::REFIID, minwindef::ULONG, ntdef::HRESULT},

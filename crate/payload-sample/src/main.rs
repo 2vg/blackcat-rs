@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
-use winapi::um::winuser::{MessageBoxW, MB_OK};
 use std::ptr;
+use winapi::um::winuser::{MessageBoxW, MB_OK};
 
 fn main() {
     unsafe {
@@ -9,7 +9,7 @@ fn main() {
             ptr::null_mut(),
             e("ur machine hacked ฅ( ̳• ε • ̳").as_ptr(),
             e("Hello ♡").as_ptr(),
-            MB_OK
+            MB_OK,
         );
     }
 }

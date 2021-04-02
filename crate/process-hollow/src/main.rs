@@ -4,7 +4,10 @@ use anyhow::*;
 
 fn main() -> Result<()> {
     // 32bit -> 32bit
-    process_hollow::hollow32("c:\\windows\\syswow64\\calc.exe", "c:\\windows\\syswow64\\notepad.exe")?;
+    process_hollow::hollow32(
+        "c:\\windows\\syswow64\\calc.exe",
+        "c:\\windows\\syswow64\\notepad.exe",
+    )?;
 
     // 64bit -> 64bit
     process_hollow::hollow64("payload-sample.exe", "notepad.exe")?;

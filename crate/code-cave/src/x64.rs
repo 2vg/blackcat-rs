@@ -1,8 +1,19 @@
-use std::{ffi::CString, intrinsics::{transmute}, mem::zeroed, ptr::null_mut};
+use std::{ffi::CString, intrinsics::transmute, mem::zeroed, ptr::null_mut};
 
 use anyhow::*;
 use pe_tools::x64;
-use winapi::{shared::ntdef::HANDLE, um::{errhandlingapi::{GetLastError, SetLastError}, memoryapi::{VirtualAllocEx, WriteProcessMemory}, processthreadsapi::{GetThreadContext, ResumeThread, SetThreadContext, SuspendThread}, winnt::{CONTEXT, CONTEXT_ALL, CONTEXT_CONTROL, CONTEXT_FULL, MEM_COMMIT, PAGE_EXECUTE_READWRITE, PAGE_READWRITE}}};
+use winapi::{
+    shared::ntdef::HANDLE,
+    um::{
+        errhandlingapi::{GetLastError, SetLastError},
+        memoryapi::{VirtualAllocEx, WriteProcessMemory},
+        processthreadsapi::{GetThreadContext, ResumeThread, SetThreadContext, SuspendThread},
+        winnt::{
+            CONTEXT, CONTEXT_ALL, CONTEXT_CONTROL, CONTEXT_FULL, MEM_COMMIT,
+            PAGE_EXECUTE_READWRITE, PAGE_READWRITE,
+        },
+    },
+};
 
 /*
  *    code =
@@ -48,48 +59,16 @@ use winapi::{shared::ntdef::HANDLE, um::{errhandlingapi::{GetLastError, SetLastE
  *    ret
  */
 
-pub fn inject(hp: HANDLE, ht: HANDLE, lib: impl Into<String>) -> Result<()>{
+pub fn inject(hp: HANDLE, ht: HANDLE, lib: impl Into<String>) -> Result<()> {
     unsafe {
         let mut code: [u8; 87] = [
-            0x68, 0x17, 0x17, 0x17, 0x17,
-            0x68, 0x17, 0x17, 0x17, 0x17,
-            0x9c,
-            0x50,
-            0x53,
-            0x51,
-            0x52,
-            0x56,
-            0x57,
-            0x55,
-            0x41, 0x50,
-            0x41, 0x51,
-            0x41, 0x52,
-            0x41, 0x53,
-            0x41, 0x54,
-            0x41, 0x55,
-            0x41, 0x56,
-            0x41, 0x57,
-            0x68, 0x23, 0x23, 0x23, 0x23,
-            0x48, 0xb9, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18,
-            0x48, 0xb8, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19,
-            0xff, 0xd0, 0x58,
-            0x41, 0x5f,
-            0x41, 0x5e,
-            0x41, 0x5d,
-            0x41, 0x5c,
-            0x41, 0x5b,
-            0x41, 0x5a,
-            0x41, 0x59,
-            0x41, 0x58,
-            0x5d,
-            0x5f,
-            0x5e,
-            0x5a,
-            0x59,
-            0x5b,
-            0x58,
-            0x9d,
-            0xc3,
+            0x68, 0x17, 0x17, 0x17, 0x17, 0x68, 0x17, 0x17, 0x17, 0x17, 0x9c, 0x50, 0x53, 0x51,
+            0x52, 0x56, 0x57, 0x55, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, 0x41, 0x54,
+            0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x68, 0x23, 0x23, 0x23, 0x23, 0x48, 0xb9, 0x18,
+            0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x48, 0xb8, 0x19, 0x19, 0x19, 0x19, 0x19,
+            0x19, 0x19, 0x19, 0xff, 0xd0, 0x58, 0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c,
+            0x41, 0x5b, 0x41, 0x5a, 0x41, 0x59, 0x41, 0x58, 0x5d, 0x5f, 0x5e, 0x5a, 0x59, 0x5b,
+            0x58, 0x9d, 0xc3,
         ];
 
         let lib = lib.into();
@@ -99,15 +78,33 @@ pub fn inject(hp: HANDLE, ht: HANDLE, lib: impl Into<String>) -> Result<()>{
 
         let load_library = x64::search_proc_address_from_loaded_module("LoadLibraryA")?;
 
-        let lib_name_addr = VirtualAllocEx(hp, null_mut(), (lib_len + 1) as _, MEM_COMMIT, PAGE_READWRITE);
+        let lib_name_addr = VirtualAllocEx(
+            hp,
+            null_mut(),
+            (lib_len + 1) as _,
+            MEM_COMMIT,
+            PAGE_READWRITE,
+        );
 
-        let stub_addr = VirtualAllocEx(hp, null_mut(), code.len() as _, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        let stub_addr = VirtualAllocEx(
+            hp,
+            null_mut(),
+            code.len() as _,
+            MEM_COMMIT,
+            PAGE_EXECUTE_READWRITE,
+        );
 
         if load_library.is_null() || lib_name_addr.is_null() || stub_addr.is_null() {
             bail!("something happened");
         }
 
-        let res_lib_name = WriteProcessMemory(hp, lib_name_addr, clib_name.as_ptr() as _, lib_len, null_mut());
+        let res_lib_name = WriteProcessMemory(
+            hp,
+            lib_name_addr,
+            clib_name.as_ptr() as _,
+            lib_len,
+            null_mut(),
+        );
 
         if res_lib_name == 0 {
             bail!("could not write to prcoess memory");
@@ -150,7 +147,13 @@ pub fn inject(hp: HANDLE, ht: HANDLE, lib: impl Into<String>) -> Result<()>{
             code[i] = load_library[i - 51];
         }
 
-        WriteProcessMemory(hp, stub_addr, &mut code[0] as *const _ as *mut _, code.len(), null_mut());
+        WriteProcessMemory(
+            hp,
+            stub_addr,
+            &mut code[0] as *const _ as *mut _,
+            code.len(),
+            null_mut(),
+        );
 
         SetThreadContext(ht, &mut ctx as *mut _);
 

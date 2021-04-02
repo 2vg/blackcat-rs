@@ -8,7 +8,7 @@ use winapi::{
     um::{
         combaseapi::{CoInitializeEx, CoUninitialize},
         objbase::COINIT_APARTMENTTHREADED,
-        shobjidl_core::{IShellItem, SHCreateItemFromParsingName}
+        shobjidl_core::{IShellItem, SHCreateItemFromParsingName},
     },
 };
 mod bindings {
@@ -47,7 +47,8 @@ pub fn masqueraded_rename(OldName: impl Into<String>, NewName: impl Into<String>
                 null_mut(),
                 IID_IShellItem as *const _ as _,
                 &mut p_IShellItem as *mut _ as *mut _,
-            ) != S_OK {
+            ) != S_OK
+            {
                 break;
             }
 
@@ -118,7 +119,8 @@ pub fn masqueraded_copy_or_move(
                 null_mut(),
                 IID_IShellItem as *const _ as _,
                 &mut p_IShellItem_src as *mut _ as *mut _,
-            ) != S_OK {
+            ) != S_OK
+            {
                 break;
             }
 
@@ -127,7 +129,8 @@ pub fn masqueraded_copy_or_move(
                 null_mut(),
                 IID_IShellItem as *const _ as _,
                 &mut p_IShellItem_dst as *mut _ as *mut _,
-            ) != S_OK {
+            ) != S_OK
+            {
                 break;
             }
 
@@ -215,13 +218,12 @@ pub fn masqueraded_delete(Name: impl Into<String>) -> Result<()> {
                 null_mut(),
                 IID_IShellItem as *const _ as _,
                 &mut p_IShellItem as *mut _ as *mut _,
-            ) != S_OK {
+            ) != S_OK
+            {
                 break;
             }
 
-            if (*p_IFileOperation).DeleteItem(p_IShellItem, null_mut())
-                != S_OK
-            {
+            if (*p_IFileOperation).DeleteItem(p_IShellItem, null_mut()) != S_OK {
                 break;
             }
 

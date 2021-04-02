@@ -1,6 +1,5 @@
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
-
 extern crate pe_tools;
 
 use std::ptr::null_mut;
@@ -12,27 +11,25 @@ use pe_tools::x64::*;
 use winapi::{
     shared::{
         basetsd::SIZE_T,
-        minwindef::{
-            BOOL, DWORD, HINSTANCE, LPVOID
-        },
-        ntdef::{
-            HANDLE, NTSTATUS, PVOID
-        }
+        minwindef::{BOOL, DWORD, HINSTANCE, LPVOID},
+        ntdef::{HANDLE, NTSTATUS, PVOID},
     },
     um::winnt::{
-        DLL_PROCESS_ATTACH, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, PAGE_READWRITE
-    }
+        DLL_PROCESS_ATTACH, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, PAGE_READWRITE,
+    },
 };
 
-pub type PVirtualAlloc = fn(lpAddress: LPVOID, dwSize: SIZE_T, flAllocationType: DWORD, flProtect: DWORD) -> LPVOID;
-pub type PNtFlushInstructionCache = fn(ProcessHandle:HANDLE, BaseAddress:PVOID, Length:SIZE_T) ->NTSTATUS;
+pub type PVirtualAlloc =
+    fn(lpAddress: LPVOID, dwSize: SIZE_T, flAllocationType: DWORD, flProtect: DWORD) -> LPVOID;
+pub type PNtFlushInstructionCache =
+    fn(ProcessHandle: HANDLE, BaseAddress: PVOID, Length: SIZE_T) -> NTSTATUS;
 pub type DllMain = unsafe extern "system" fn(HINSTANCE, DWORD, LPVOID) -> BOOL;
 
 #[no_mangle]
 pub extern "system" fn reflective_load() -> bool {
     match __reflective_load() {
-        Ok(_) => { true },
-        Err(_) => { false }
+        Ok(_) => true,
+        Err(_) => false,
     }
 }
 
@@ -44,20 +41,37 @@ pub fn __reflective_load() -> Result<()> {
         let mut container = PEContainer::new(my_base_address, true)?;
 
         // 2: get address needed by the loading process
-        let pLoadLibraryA = ptr_to_fn::<PLoadLibraryA>(search_proc_address_from_loaded_module("LoadLibraryA")?);
-        let pGetProcAddress = ptr_to_fn::<PGetProcAddress>(search_proc_address_from_loaded_module("GetProcAddress")?);
-        let pVirtualAlloc = ptr_to_fn::<PVirtualAlloc>(search_proc_address_from_loaded_module("VirtualAlloc")?);
-        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(search_proc_address_from_loaded_module("NtFlushInstructionCache")?);
+        let pLoadLibraryA =
+            ptr_to_fn::<PLoadLibraryA>(search_proc_address_from_loaded_module("LoadLibraryA")?);
+        let pGetProcAddress =
+            ptr_to_fn::<PGetProcAddress>(search_proc_address_from_loaded_module("GetProcAddress")?);
+        let pVirtualAlloc =
+            ptr_to_fn::<PVirtualAlloc>(search_proc_address_from_loaded_module("VirtualAlloc")?);
+        let pNtFlushInstructionCache = ptr_to_fn::<PNtFlushInstructionCache>(
+            search_proc_address_from_loaded_module("NtFlushInstructionCache")?,
+        );
 
         // 3: allocate new v memory, and change target base address to it
-        let mut allocated = pVirtualAlloc(container.image_base_address(), container.image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+        let mut allocated = pVirtualAlloc(
+            container.image_base_address(),
+            container.image_size() as _,
+            MEM_RESERVE | MEM_COMMIT,
+            PAGE_READWRITE,
+        );
 
         if allocated as u64 == 0x0 as u64 {
-            allocated = pVirtualAlloc(null_mut(), container.image_size() as _, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            allocated = pVirtualAlloc(
+                null_mut(),
+                container.image_size() as _,
+                MEM_RESERVE | MEM_COMMIT,
+                PAGE_READWRITE,
+            );
         };
 
         if allocated as u64 == 0x0 as u64 {
-            bail!("could not allocate of the remote process image. VirtualAlloc calling was failed.")
+            bail!(
+                "could not allocate of the remote process image. VirtualAlloc calling was failed."
+            )
         };
 
         // 4: copy over headers
@@ -95,8 +109,8 @@ pub fn __reflective_load() -> Result<()> {
 }
 
 // for debug
-use winapi::um::winuser::{MessageBoxW, MB_OK};
 use std::ptr;
+use winapi::um::winuser::{MessageBoxW, MB_OK};
 
 fn e(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
@@ -106,11 +120,6 @@ fn debug(t: impl Into<String>, c: impl Into<String>) {
     let t = t.into();
     let c = c.into();
     unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            e(&c).as_ptr(),
-            e(&t).as_ptr(),
-            MB_OK
-        );
+        MessageBoxW(ptr::null_mut(), e(&c).as_ptr(), e(&t).as_ptr(), MB_OK);
     }
 }

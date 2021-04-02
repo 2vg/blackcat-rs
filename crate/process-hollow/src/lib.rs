@@ -1,25 +1,26 @@
 extern crate pe_tools;
 
-use pe_tools::{ shared, x86, x64 };
+use pe_tools::{shared, x64, x86};
 
 use anyhow::*;
+use ntapi::ntmmapi::NtUnmapViewOfSection;
 use winapi::ctypes::c_void;
-use ntapi::ntmmapi:: NtUnmapViewOfSection;
 use winapi::um::{
-    errhandlingapi::{ GetLastError },
-    memoryapi::{ VirtualAllocEx, WriteProcessMemory },
+    errhandlingapi::GetLastError,
+    memoryapi::{VirtualAllocEx, WriteProcessMemory},
     processthreadsapi::{
-        CreateProcessA, STARTUPINFOA, PROCESS_INFORMATION, ResumeThread,
-        GetThreadContext, SetThreadContext, // SuspendThread
+        CreateProcessA,
+        GetThreadContext,
+        ResumeThread,
+        SetThreadContext, // SuspendThread
+        PROCESS_INFORMATION,
+        STARTUPINFOA,
     },
-    winbase:: {
-        CREATE_SUSPENDED,
-        Wow64GetThreadContext, Wow64SetThreadContext
+    winbase::{Wow64GetThreadContext, Wow64SetThreadContext, CREATE_SUSPENDED},
+    winnt::{
+        CONTEXT, CONTEXT_FULL, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, WOW64_CONTEXT,
+        WOW64_CONTEXT_FULL,
     },
-    winnt:: {
-        MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
-        CONTEXT, WOW64_CONTEXT, CONTEXT_FULL, WOW64_CONTEXT_FULL
-    }
 };
 
 use std::ffi::CString;
@@ -35,7 +36,18 @@ pub fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
         let mut process_info = zeroed::<PROCESS_INFORMATION>();
 
         let dest = CString::new(dest.into()).expect("CString::new failed");
-        CreateProcessA(null_mut(), dest.as_ptr() as *mut _, null_mut(), null_mut(), 0, CREATE_SUSPENDED, null_mut(), null_mut(), &mut startup, &mut process_info);
+        CreateProcessA(
+            null_mut(),
+            dest.as_ptr() as *mut _,
+            null_mut(),
+            null_mut(),
+            0,
+            CREATE_SUSPENDED,
+            null_mut(),
+            null_mut(),
+            &mut startup,
+            &mut process_info,
+        );
 
         // Get dest image base address
         let hp = process_info.hProcess;
@@ -52,12 +64,26 @@ pub fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
 
         // Allocate memory for src program
         let mut new_dest_image_base_address = VirtualAllocEx(
-            hp, dest_image_base_address as *mut _, container.get_optional_headers().windows_fields.size_of_image as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+            hp,
+            dest_image_base_address as *mut _,
+            container
+                .get_optional_headers()
+                .windows_fields
+                .size_of_image as usize,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE,
         );
 
         if new_dest_image_base_address.is_null() {
             new_dest_image_base_address = VirtualAllocEx(
-                hp, null_mut(), container.get_optional_headers().windows_fields.size_of_image as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+                hp,
+                null_mut(),
+                container
+                    .get_optional_headers()
+                    .windows_fields
+                    .size_of_image as usize,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE,
             );
         }
 
@@ -79,7 +105,13 @@ pub fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
 
         // target's image base address changed, change image base address of remote
         if new_dest_image_base_address != dest_image_base_address {
-            WriteProcessMemory(hp, (dest_image_base_address as usize + 0x8) as _, new_dest_image_base_address, std::mem::size_of::<*mut c_void>(), null_mut());
+            WriteProcessMemory(
+                hp,
+                (dest_image_base_address as usize + 0x8) as _,
+                new_dest_image_base_address,
+                std::mem::size_of::<*mut c_void>(),
+                null_mut(),
+            );
         }
 
         // create new thread context
@@ -106,7 +138,7 @@ pub fn hollow32(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
         // remove debug print
         println!("process was hollowed ε٩(๑> 3 <)۶з");
 
-        return Ok(())
+        return Ok(());
     }
 }
 
@@ -117,7 +149,18 @@ pub fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
         let mut process_info = zeroed::<PROCESS_INFORMATION>();
 
         let dest = CString::new(dest.into()).expect("CString::new failed");
-        CreateProcessA(null_mut(), dest.as_ptr() as *mut _, null_mut(), null_mut(), 0, CREATE_SUSPENDED, null_mut(), null_mut(), &mut startup, &mut process_info);
+        CreateProcessA(
+            null_mut(),
+            dest.as_ptr() as *mut _,
+            null_mut(),
+            null_mut(),
+            0,
+            CREATE_SUSPENDED,
+            null_mut(),
+            null_mut(),
+            &mut startup,
+            &mut process_info,
+        );
 
         // Get dest image base address
         let hp = process_info.hProcess;
@@ -134,12 +177,26 @@ pub fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
 
         // Allocate memory for src program
         let mut new_dest_image_base_address = VirtualAllocEx(
-            hp, dest_image_base_address as *mut _, container.get_optional_headers().windows_fields.size_of_image as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+            hp,
+            dest_image_base_address as *mut _,
+            container
+                .get_optional_headers()
+                .windows_fields
+                .size_of_image as usize,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE,
         );
 
         if new_dest_image_base_address.is_null() {
             new_dest_image_base_address = VirtualAllocEx(
-                hp, null_mut(), container.get_optional_headers().windows_fields.size_of_image as usize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+                hp,
+                null_mut(),
+                container
+                    .get_optional_headers()
+                    .windows_fields
+                    .size_of_image as usize,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE,
             );
         }
 
@@ -161,7 +218,13 @@ pub fn hollow64(src: impl Into<String>, dest: impl Into<String>) -> Result<()> {
 
         // target's image base address changed, change image base address of remote
         if new_dest_image_base_address != dest_image_base_address {
-            WriteProcessMemory(hp, (dest_image_base_address as u64 + 0x10) as _, new_dest_image_base_address, std::mem::size_of::<*mut c_void>(), null_mut());
+            WriteProcessMemory(
+                hp,
+                (dest_image_base_address as u64 + 0x10) as _,
+                new_dest_image_base_address,
+                std::mem::size_of::<*mut c_void>(),
+                null_mut(),
+            );
         }
 
         // create new thread context

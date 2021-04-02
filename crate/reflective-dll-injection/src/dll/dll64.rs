@@ -11,15 +11,15 @@ pub unsafe extern "system" fn DllMain(
     match call_reason {
         DLL_PROCESS_ATTACH => {
             msg("hello", "test");
-        },
+        }
         _ => {}
     };
 
     true as _
 }
 
-use winapi::um::winuser::{MessageBoxW, MB_OK};
 use std::ptr;
+use winapi::um::winuser::{MessageBoxW, MB_OK};
 
 fn e(source: &str) -> Vec<u16> {
     source.encode_utf16().chain(Some(0)).collect()
@@ -29,11 +29,6 @@ fn msg(t: impl Into<String>, c: impl Into<String>) {
     let t = t.into();
     let c = c.into();
     unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            e(&c).as_ptr(),
-            e(&t).as_ptr(),
-            MB_OK
-        );
+        MessageBoxW(ptr::null_mut(), e(&c).as_ptr(), e(&t).as_ptr(), MB_OK);
     }
 }

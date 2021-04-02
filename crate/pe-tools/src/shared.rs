@@ -1,6 +1,5 @@
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
-
 use std::fs::File;
 use std::io::prelude::*;
 use std::mem::{size_of, zeroed};
@@ -10,14 +9,7 @@ use anyhow::*;
 use bitfield;
 use ntapi::{
     ntpebteb::PEB,
-    ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION}
-};
-use winapi::{
-    ctypes::c_void,
-    shared::{
-        minwindef::DWORD,
-        ntdef::PVOID
-    }
+    ntpsapi::{NtQueryInformationProcess, PROCESS_BASIC_INFORMATION},
 };
 use winapi::shared::{
     minwindef::{FARPROC, HMODULE},
@@ -25,9 +17,11 @@ use winapi::shared::{
 };
 use winapi::um::{
     memoryapi::ReadProcessMemory,
-    winnt::{
-        IMAGE_DOS_HEADER, IMAGE_NT_HEADERS,
-    },
+    winnt::{IMAGE_DOS_HEADER, IMAGE_NT_HEADERS},
+};
+use winapi::{
+    ctypes::c_void,
+    shared::{minwindef::DWORD, ntdef::PVOID},
 };
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +53,7 @@ pub struct Delta {
 impl Delta {
     pub fn calculate_delta(target: usize, src: usize) -> Delta {
         let is_minus = target < src;
-    
+
         if is_minus {
             Delta {
                 is_minus,
@@ -78,7 +72,8 @@ impl Delta {
 pub const DOT_RELOC: [u8; 8] = [46, 114, 101, 108, 111, 99, 0, 0];
 
 pub type PLoadLibraryA = unsafe extern "system" fn(lpFileName: LPCSTR) -> HMODULE;
-pub type PGetProcAddress = unsafe extern "system" fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
+pub type PGetProcAddress =
+    unsafe extern "system" fn(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
 pub type TLS_CALLBACK = unsafe extern "system" fn(DllHandle: PVOID, Reason: DWORD, Reserved: PVOID);
 
 pub fn get_binary_from_file(file_name: impl Into<String>) -> Result<Vec<u8>> {
@@ -132,7 +127,8 @@ pub fn get_remote_peb_base_address(h_process: HANDLE) -> Result<*mut PEB> {
             &mut pbi as *const _ as *mut _,
             size_of::<PROCESS_BASIC_INFORMATION>() as _,
             null_mut(),
-        ) == 0 {
+        ) == 0
+        {
             Ok(pbi.PebBaseAddress)
         } else {
             bail!("Error. could not get image address.")
@@ -175,7 +171,7 @@ pub fn ptr_to_str(p: &mut *mut u8) -> String {
         while **p != 0x0 {
             str.push(**p);
             *p = (*p as usize + 1) as _;
-        };
+        }
         String::from_utf8(str).unwrap()
     }
 }
@@ -185,7 +181,9 @@ pub fn from_wide_ptr(ptr: *const u16) -> String {
     use std::os::windows::ffi::OsStringExt;
     unsafe {
         assert!(!ptr.is_null());
-        let len = (0..std::isize::MAX).position(|i| *ptr.offset(i) == 0).unwrap();
+        let len = (0..std::isize::MAX)
+            .position(|i| *ptr.offset(i) == 0)
+            .unwrap();
         let slice = std::slice::from_raw_parts(ptr, len);
         OsString::from_wide(slice).to_string_lossy().into_owned()
     }
