@@ -176,11 +176,3 @@ async fn read_request(
     };
     Ok(res.0)
 }
-
-pub async fn modify_request(mut input: Request) -> Result<Request> {
-    input.insert_header(
-        "User-Agent",
-        "Homozilla/5.0 (Checker/1.14.514; homOSeX 8.10)",
-    );
-    Ok(input)
-}
