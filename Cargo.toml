@@ -8,6 +8,7 @@ edition = "2018"
 
 [workspace]
 members = [
+    "crate/argus",
     "crate/code-cave",
     "crate/pe-tools",
     "crate/payload-sample",
