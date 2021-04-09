@@ -150,8 +150,12 @@ async fn handle_finalize(
 ) -> Result<()> {
     async_h1::accept(client_stream.clone(), |req| async {
         let req = (server.edit_request)(req).await?;
-        let res = async_h1::connect(target_stream.clone(), req.clone()).await?;
-        Ok((server.edit_response)((req, res)).await?)
+        let res_result = async_h1::connect(target_stream.clone(), req.clone()).await;
+        if res_result.is_err() {
+            Ok((server.edit_response)((req, Response::new(StatusCode::BadRequest))).await?)
+        } else {
+            Ok((server.edit_response)((req, res_result.unwrap())).await?)
+        }
     })
     .map_err(Error::msg)
     .await?;
