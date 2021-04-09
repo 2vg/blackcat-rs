@@ -24,14 +24,14 @@ pub struct Server {
     pub addr: SocketAddr,
     pub container: cert_util::CAContainer,
     pub edit_request: fn(Request) -> BoxFuture<'static, Result<Request>>,
-    pub edit_response: fn(Response) -> BoxFuture<'static, Result<Response>>,
+    pub edit_response: fn((Request, Response)) -> BoxFuture<'static, Result<Response>>,
 }
 
 async fn ident_request(input: Request) -> Result<Request> {
     Ok(input)
 }
-async fn ident_response(input: Response) -> Result<Response> {
-    Ok(input)
+async fn ident_response(req: Request, res: Response) -> Result<Response> {
+    Ok(res)
 }
 
 impl Server {
@@ -40,7 +40,7 @@ impl Server {
             addr,
             container,
             edit_request: |r| ident_request(r).boxed(),
-            edit_response: |r| ident_response(r).boxed(),
+            edit_response: |(r, rr)| ident_response(r, rr).boxed(),
         }
     }
 
@@ -65,7 +65,7 @@ impl Server {
         self.edit_request = f;
     }
 
-    pub fn res_handler(&mut self, f: fn(Response) -> BoxFuture<'static, Result<Response>>) {
+    pub fn res_handler(&mut self, f: fn((Request, Response)) -> BoxFuture<'static, Result<Response>>) {
         self.edit_response = f;
     }
 }
@@ -150,8 +150,8 @@ async fn handle_finalize(
 ) -> Result<()> {
     async_h1::accept(client_stream.clone(), |req| async {
         let req = (server.edit_request)(req).await?;
-        let res = async_h1::connect(target_stream.clone(), req).await?;
-        Ok((server.edit_response)(res).await?)
+        let res = async_h1::connect(target_stream.clone(), req.clone()).await?;
+        Ok((server.edit_response)((req, res)).await?)
     })
     .map_err(Error::msg)
     .await?;
