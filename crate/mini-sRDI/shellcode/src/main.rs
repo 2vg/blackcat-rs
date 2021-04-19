@@ -32,9 +32,10 @@ pub type DllMain = unsafe extern "system" fn(HINSTANCE, DWORD, LPVOID) -> BOOL;
 
 #[no_mangle]
 pub unsafe extern "C" fn main(dll: LPVOID) {
+    let addr = dll;
+
     asm!("and rsp, ~0xf");
 
-    let addr = dll;
     let dos_header = addr as *mut IMAGE_DOS_HEADER;
     let nt_header = (addr as u64 + (*dos_header).e_lfanew as u64) as *mut IMAGE_NT_HEADERS64;
 
@@ -50,15 +51,7 @@ pub unsafe extern "C" fn main(dll: LPVOID) {
 
     // for debug
     let u32_dll = LoadLibraryA("user32.dll\x00".as_ptr() as _);
-    let msgboxa_addr = GetProcAddress(u32_dll, "MessageBoxA\x00".as_ptr() as _);
-    let MessageBoxA: PMessageBoxA = transmute(msgboxa_addr);
-
-    MessageBoxA(
-        NULL,
-        "start to inject!\0".as_ptr() as *const i8,
-        "From shellcode\0".as_ptr() as _,
-        0x00,
-    );
+    let MessageBoxA: PMessageBoxA = transmute(GetProcAddress(u32_dll, "MessageBoxA\x00".as_ptr() as _));
 
     let mut virtual_image_base_address = VirtualAlloc(
         (*nt_header).OptionalHeader.ImageBase as _,
@@ -161,13 +154,6 @@ pub unsafe extern "C" fn main(dll: LPVOID) {
 
         import_dir = (import_dir as u64 + size_of::<IMAGE_IMPORT_DESCRIPTOR>() as u64) as _;
     }
-
-    MessageBoxA(
-        NULL,
-        "imported!\0".as_ptr() as *const i8,
-        "From shellcode\0".as_ptr() as _,
-        0x00,
-    );
 
     let import_dir_info =
         &(*nt_header).OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT as usize];
