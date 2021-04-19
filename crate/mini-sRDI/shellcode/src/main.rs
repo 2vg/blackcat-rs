@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -31,10 +32,11 @@ pub type DllMain = unsafe extern "system" fn(HINSTANCE, DWORD, LPVOID) -> BOOL;
 
 #[no_mangle]
 pub unsafe extern "C" fn main(dll: LPVOID) {
-    let addr = dll;
     asm!("and rsp, ~0xf");
+
+    let addr = dll;
     let dos_header = addr as *mut IMAGE_DOS_HEADER;
-    let nt_header = (dll as u64 + (*dos_header).e_lfanew as u64) as *mut IMAGE_NT_HEADERS64;
+    let nt_header = (addr as u64 + (*dos_header).e_lfanew as u64) as *mut IMAGE_NT_HEADERS64;
 
     let kernel32 = get_module_by_name(utf16!("KERNEL32.DLL\x00").as_ptr());
     let ntdll = get_module_by_name(utf16!("ntdll.dll\x00").as_ptr());
@@ -211,6 +213,7 @@ pub unsafe extern "C" fn main(dll: LPVOID) {
 
         while !(*callback).is_null() {
             transmute::<*const c_void, DllMain>(*callback)(virtual_image_base_address as _, 1, 0 as _);
+            callback = callback.offset(1);
         }
     }
 
