@@ -1,0 +1,15 @@
+[build]
+target = "x86_64-pc-windows-msvc"
+rustflags = [
+    "-Z", "pre-link-arg=/NOLOGO",
+    "-Z", "pre-link-arg=/NODEFAULTLIB",
+    "-C", "link-arg=/ENTRY:main",
+    "-C", "link-arg=/MERGE:.edata=.rdata",
+    "-C", "link-arg=/MERGE:.rustc=.data",
+    "-C", "link-arg=/MERGE:.rdata=.text",
+    "-C", "link-arg=/MERGE:.pdata=.text",
+    "-C", "link-arg=/DEBUG:NONE",
+    "-C", "link-arg=/EMITPOGOPHASEINFO",
+    "-C", "target-feature=-mmx,-sse,+soft-float",
+    "--emit", "asm",
+]

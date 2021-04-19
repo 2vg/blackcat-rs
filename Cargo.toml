@@ -18,3 +18,7 @@ members = [
     "crate/wuhu",
     "crate/yura",
 ]
+
+exclude = [
+    "crate/mini-sRDI",
+]
