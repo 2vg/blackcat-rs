@@ -10,6 +10,7 @@ edition = "2018"
 members = [
     "crate/argus",
     "crate/code-cave",
+    "crate/maidism",
     "crate/pe-tools",
     "crate/payload-sample",
     "crate/process-hide",
