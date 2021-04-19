@@ -26,6 +26,21 @@ fn main() -> Result<()> {
         let shellcode = File::create(dst_path)?;
         let mut bootstrap: Vec<u8> = Vec::new();
 
+        /*
+         *     ;bootstrap shellcode
+         *     call    0x5
+         *     pop     rcx
+         *     add     rcx,0x???? ;address of dll
+         *     push    rsi
+         *     mov     rsi,rsp
+         *     sub     rsp,0x28
+         *     and     rsp,0xfffffffffffffff0
+         *     call    0x23
+         *     mov     rsp,rsi
+         *     pop     rsi
+         *     ret
+         */
+
         bootstrap.extend_from_slice(b"\xe8\x00\x00\x00\x00");
         bootstrap.push(b'\x59');
         bootstrap.extend_from_slice(b"\x48\x81\xc1\x00\x00\x00\x00");
