@@ -14,7 +14,6 @@ members = [
     "crate/payload-sample",
     "crate/process-hide",
     "crate/process-hollow",
-    "crate/reflective-dll-injection",
     "crate/wuhu",
     "crate/yura",
 ]
