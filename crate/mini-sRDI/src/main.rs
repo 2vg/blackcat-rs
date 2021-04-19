@@ -55,26 +55,32 @@ fn main() -> Result<()> {
         bootstrap.push(b'\x5e');
         bootstrap.push(b'\xc3');
 
-        let dll_offset = bootstrap.len() + size - 5;
+        let dll_offset = bootstrap.len() + size;
         bootstrap[9]  = ((dll_offset >> 0) & 0xFF) as _;
         bootstrap[10] = ((dll_offset >> 8) & 0xFF) as _;
         bootstrap[11] = ((dll_offset >> 16) & 0xFF) as _;
         bootstrap[12] = ((dll_offset >> 24) & 0xFF) as _;
 
-        buffer[0 + start] = 0x90;
-        buffer[1 + start] = 0xe9;
-        buffer[2 + start] = ((entry_offset >> 0) - 6 & 0xFF) as _;
-        buffer[3 + start] = ((entry_offset >> 8) & 0xFF) as _;
-        buffer[4 + start] = ((entry_offset >> 16) & 0xFF) as _;
-        buffer[5 + start] = ((entry_offset >> 24) & 0xFF) as _;
-
         let mut buf_writer = BufWriter::new(shellcode);
+
+        // write bootstrap first
         for b in bootstrap {
             buf_writer.write(&[b])?;
         }
+
+        // write jmp to entry code
+        buf_writer.write(&[0xe9])?;
+        buf_writer.write(&[((entry_offset >> 0) & 0xFF) as _])?;
+        buf_writer.write(&[((entry_offset >> 8) & 0xFF) as _])?;
+        buf_writer.write(&[((entry_offset >> 16) & 0xFF) as _])?;
+        buf_writer.write(&[((entry_offset >> 24) & 0xFF) as _])?;
+
+        // write rdi code
         for i in start..start + size {
             buf_writer.write(&[buffer[i]])?;
         }
+
+        // write dll
         for b in DLL {
             buf_writer.write(&[*b])?;
         }
