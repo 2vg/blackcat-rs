@@ -4,9 +4,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
 
-//const DLL: &[u8; 27648] = include_bytes!(r"C:\Windows\System32\calc.exe");
-//const DLL: &[u8; 3072] = include_bytes!(r"C:\Users\m0fqn\Documents\GitHub\rust-windows-shellcode\shellcode\kawaii.dll");
-const DLL: &[u8; 92160] = include_bytes!(r"C:\Users\m0fqn\Documents\GitHub\ReflectiveDLLInjection\x64\Release\reflective_dll.x64x.dll");
+const DLL: &[u8; 93184] = include_bytes!(r".\something_payload.dll");
 
 fn main() -> Result<()> {
     let src_path = "shellcode\\target\\x86_64-pc-windows-msvc\\release\\shellcode.exe";
