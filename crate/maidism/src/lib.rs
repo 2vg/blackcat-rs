@@ -1,7 +1,8 @@
 use anyhow::*;
 use colored::{ColoredString, Colorize};
 use iced_x86::{
-    Decoder, DecoderOptions, Formatter, FormatterOutput, FormatterTextKind, IntelFormatter,
+    Decoder, DecoderOptions, Formatter, FormatterOutput, FormatterTextKind, Instruction,
+    IntelFormatter,
 };
 use std::io::prelude::*;
 use std::{fs::File, ptr::null_mut};
@@ -14,7 +15,11 @@ use wuhu::{
     },
 };
 
-pub fn shellcode_runner(file: impl Into<String>, with_suspended: bool, time_out: u32) -> Result<()> {
+pub fn shellcode_runner(
+    file: impl Into<String>,
+    with_suspended: bool,
+    time_out: u32,
+) -> Result<()> {
     let buffer = get_binary_from_file(file)?;
 
     let thread_flag = if with_suspended { 0x4 } else { 0x0 };
@@ -103,6 +108,7 @@ pub fn remote_shellcode_runner(
 
 pub fn disassemble(
     file: impl Into<String>,
+    ip: u64,
     start_address: u64,
     size: usize,
     colorized: bool,
@@ -110,14 +116,17 @@ pub fn disassemble(
     let buffer = get_binary_from_file(file)?;
 
     let bytes = &buffer;
-    let mut decoder = Decoder::with_ip(64, bytes, 0x0, DecoderOptions::NONE);
+    let mut decoder = Decoder::with_ip(64, bytes, ip, DecoderOptions::NONE);
 
     let mut c = 0;
     let mut address_found = false;
     let mut formatter = IntelFormatter::new();
     formatter.options_mut().set_first_operand_char_index(8);
     let mut output = MaidismFormatterOutput::new();
-    for instruction in &mut decoder {
+    let mut instruction = Instruction::default();
+
+    while decoder.can_decode() {
+        decoder.decode_out(&mut instruction);
         output.vec.clear();
         formatter.format(&instruction, &mut output);
 
@@ -134,12 +143,12 @@ pub fn disassemble(
         let start_index = (instruction.ip() - 0x0) as usize;
         let instr_bytes = &bytes[start_index..start_index + instruction.len()];
         for b in instr_bytes.iter() {
-            print!("{:02X}", b);
+            print!("{:02X} ", b);
         }
 
         if instr_bytes.len() < 10 {
-            for _ in 0..10 - instr_bytes.len() {
-                print!("  ");
+            for _ in 0..12 * 2 - (instr_bytes.len() * 2 + instr_bytes.len() - 1) {
+                print!(" ");
             }
         }
 
@@ -195,6 +204,8 @@ fn get_color(s: &str, kind: FormatterTextKind) -> ColoredString {
         FormatterTextKind::Prefix | FormatterTextKind::Mnemonic => s.bright_red(),
         FormatterTextKind::Register => s.bright_blue(),
         FormatterTextKind::Number => s.bright_cyan(),
+        FormatterTextKind::LabelAddress => s.bright_green(),
+        FormatterTextKind::FunctionAddress => s.bright_green(),
         _ => s.white(),
     }
 }
