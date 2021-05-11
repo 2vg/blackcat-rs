@@ -12,10 +12,7 @@ script = [
     "cargo build --release"
 ]
 
-[tasks.build-shellcode]
-script = [
-    "cargo run"
-]
-
 [tasks.build]
-dependencies = ["build-rdi", "build-shellcode"]
+command = "cargo"
+args = ["run"]
+dependencies = ["build-rdi"]
