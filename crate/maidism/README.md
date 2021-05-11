@@ -17,20 +17,38 @@ as a simple disassembler
 const SHELLCODE_PATH: &'static str = r"<DLL path>";
 
 fn main() -> Result<()> {
+    let bitness = 64; // 64bit
+
     /*
      * disassemble(
-     *     file: impl Into<String>,
+     *     buffer: &[u8],
+     *     ip: u64,
      *     start_address: u64,
      *     size: usize,
+     *     bitness: u32,
      *     colorized: bool,
      * ) -> Result<()>
      */
 
-    // display 16 instructions from 0x0 with colorized text
-    maidism::disassemble(SHELLCODE_PATH, 0x0, 16, true)?;
+    // display 16 instructions from 0x0 address with colorized format text, instructions pointer is 0x0
+    maidism::disassemble([...], 0x0, 8, bitness, true)?;
 
-    // display 32 instructions from 0x100 with normal text
-    maidism::disassemble(SHELLCODE_PATH, 0x100, 32, false)?;
+    /*
+     * disassemble_file(
+     *     file: impl Into<String>,
+     *     ip: u64,
+     *     start_address: u64,
+     *     size: usize,
+     *     bitness: u32,
+     *     colorized: bool,
+     * ) -> Result<()>
+     */
+
+    // display 16 instructions from 0x0 address with colorized format text, instructions pointer is 0x0
+    maidism::disassemble_file(SHELLCODE_PATH, 0x0, 0x0, 16, bitness, true)?;
+
+    // display 32 instructions from 0x100 address with normal format text, instructions pointer is 0x0
+    maidism::disassemble_file(SHELLCODE_PATH, 0x0, 0x100, 32, bitness, false)?;
 
     Ok(())
 }

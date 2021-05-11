@@ -106,17 +106,27 @@ pub fn remote_shellcode_runner(
     Ok(())
 }
 
-pub fn disassemble(
+pub fn disassemble_file(
     file: impl Into<String>,
     ip: u64,
     start_address: u64,
     size: usize,
+    bitness: u32,
     colorized: bool,
 ) -> Result<()> {
     let buffer = get_binary_from_file(file)?;
+    disassemble(&buffer, ip, start_address, size, bitness, colorized)
+}
 
-    let bytes = &buffer;
-    let mut decoder = Decoder::with_ip(64, bytes, ip, DecoderOptions::NONE);
+pub fn disassemble(
+    buffer: &[u8],
+    ip: u64,
+    start_address: u64,
+    size: usize,
+    bitness: u32,
+    colorized: bool,
+) -> Result<()> {
+    let mut decoder = Decoder::with_ip(bitness, buffer, ip, DecoderOptions::NONE);
 
     let mut c = 0;
     let mut address_found = false;
@@ -141,7 +151,7 @@ pub fn disassemble(
         print!("{:016X} ", instruction.ip());
 
         let start_index = (instruction.ip() - 0x0) as usize;
-        let instr_bytes = &bytes[start_index..start_index + instruction.len()];
+        let instr_bytes = &buffer[start_index..start_index + instruction.len()];
         for b in instr_bytes.iter() {
             print!("{:02X} ", b);
         }
