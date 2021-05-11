@@ -34,8 +34,6 @@ pub type DllMain = unsafe extern "system" fn(HINSTANCE, DWORD, LPVOID) -> BOOL;
 pub unsafe extern "C" fn main(dll: LPVOID) {
     let addr = dll;
 
-    asm!("and rsp, ~0xf");
-
     let dos_header = addr as *mut IMAGE_DOS_HEADER;
     let nt_header = (addr as u64 + (*dos_header).e_lfanew as u64) as *mut IMAGE_NT_HEADERS64;
 

@@ -33,9 +33,9 @@ fn main() -> Result<()> {
          *     add     rcx,0x???? ;address of dll
          *     push    rsi
          *     mov     rsi,rsp
-         *     sub     rsp,0x28
          *     and     rsp,0xfffffffffffffff0
-         *     call    0x23
+         *     sub     rsp,0x20
+         *     call    0x5
          *     mov     rsp,rsi
          *     pop     rsi
          *     ret
@@ -46,8 +46,8 @@ fn main() -> Result<()> {
         bootstrap.extend_from_slice(b"\x48\x81\xc1\x00\x00\x00\x00");
         bootstrap.push(b'\x56');
         bootstrap.extend_from_slice(b"\x48\x89\xe6");
-        bootstrap.extend_from_slice(b"\x48\x83\xec\x28");
         bootstrap.extend_from_slice(b"\x48\x83\xe4\xf0");
+        bootstrap.extend_from_slice(b"\x48\x83\xec\x20");
         bootstrap.push(b'\xe8');
         bootstrap.push(5 as u8);
         bootstrap.extend_from_slice(b"\x00\x00\x00");
@@ -55,6 +55,8 @@ fn main() -> Result<()> {
         bootstrap.push(b'\x5e');
         bootstrap.push(b'\xc3');
 
+        // 5bytes is not enough for jmp 64bit address
+        // but we know that bootstrap is in the range of u32, so this is okay, for now :3
         let dll_offset = bootstrap.len() + size;
         bootstrap[9]  = ((dll_offset >> 0) & 0xFF) as _;
         bootstrap[10] = ((dll_offset >> 8) & 0xFF) as _;
@@ -69,6 +71,7 @@ fn main() -> Result<()> {
         }
 
         // write jmp to entry code
+        // and same as dll offset comments↑
         buf_writer.write(&[0xe9])?;
         buf_writer.write(&[((entry_offset >> 0) & 0xFF) as _])?;
         buf_writer.write(&[((entry_offset >> 8) & 0xFF) as _])?;
