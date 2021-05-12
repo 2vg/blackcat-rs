@@ -23,7 +23,7 @@ fn main() -> Result<()> {
      * disassemble(
      *     buffer: &[u8],
      *     ip: u64,
-     *     start_address: u64,
+     *     start_offset: u64,
      *     size: usize,
      *     bitness: u32,
      *     colorized: bool,
@@ -37,7 +37,7 @@ fn main() -> Result<()> {
      * disassemble_file(
      *     file: impl Into<String>,
      *     ip: u64,
-     *     start_address: u64,
+     *     start_offset: u64,
      *     size: usize,
      *     bitness: u32,
      *     colorized: bool,

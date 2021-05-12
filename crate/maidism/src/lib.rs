@@ -109,19 +109,19 @@ pub fn remote_shellcode_runner(
 pub fn disassemble_file(
     file: impl Into<String>,
     ip: u64,
-    start_address: u64,
+    start_offset: u64,
     size: usize,
     bitness: u32,
     colorized: bool,
 ) -> Result<()> {
     let buffer = get_binary_from_file(file)?;
-    disassemble(&buffer, ip, start_address, size, bitness, colorized)
+    disassemble(&buffer, ip, start_offset, size, bitness, colorized)
 }
 
 pub fn disassemble(
     buffer: &[u8],
     ip: u64,
-    start_address: u64,
+    start_offset: u64,
     size: usize,
     bitness: u32,
     colorized: bool,
@@ -131,6 +131,7 @@ pub fn disassemble(
     let mut c = 0;
     let mut address_found = false;
     let mut formatter = IntelFormatter::new();
+    formatter.options_mut().set_digit_separator("_");
     formatter.options_mut().set_first_operand_char_index(8);
     let mut output = MaidismFormatterOutput::new();
     let mut instruction = Instruction::default();
@@ -140,9 +141,11 @@ pub fn disassemble(
         output.vec.clear();
         formatter.format(&instruction, &mut output);
 
-        if instruction.ip() > start_address && !address_found {
-            bail!("start_address has passed. check addres is correct.");
-        } else if instruction.ip() < start_address {
+        let offset = instruction.ip() + start_offset;
+
+        if instruction.ip() >  offset && !address_found {
+            bail!("start_offset has passed. check addres is correct.");
+        } else if instruction.ip() < offset {
             continue;
         }
 
@@ -150,7 +153,7 @@ pub fn disassemble(
 
         print!("{:016X} ", instruction.ip());
 
-        let start_index = (instruction.ip() - 0x0) as usize;
+        let start_index = (instruction.ip() - ip) as usize;
         let instr_bytes = &buffer[start_index..start_index + instruction.len()];
         for b in instr_bytes.iter() {
             print!("{:02X} ", b);
