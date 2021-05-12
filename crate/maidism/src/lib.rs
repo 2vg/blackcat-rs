@@ -6,11 +6,11 @@ use iced_x86::{
 };
 use std::io::prelude::*;
 use std::{fs::File, ptr::null_mut};
-use winapi::um::synchapi::WaitForSingleObject;
 use winapi::{
     shared::minwindef::LPVOID,
     um::{
         processthreadsapi::{CreateRemoteThread, OpenProcess},
+        synchapi::WaitForSingleObject,
         winnt::{
             PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION,
             PROCESS_VM_READ, PROCESS_VM_WRITE,
