@@ -167,7 +167,7 @@ pub fn disassemble(
         }
 
         if instr_bytes.len() < 10 {
-            for _ in 0..12 * 2 - (instr_bytes.len() * 2 + instr_bytes.len() - 1) {
+            for _ in 0..16 * 2 - (instr_bytes.len() * 2 + instr_bytes.len() - 1) {
                 print!(" ");
             }
         }
