@@ -140,6 +140,10 @@ pub fn disassemble(
     let mut instruction = Instruction::default();
 
     while decoder.can_decode() {
+        if c == size {
+            break;
+        }
+
         decoder.decode_out(&mut instruction);
         output.vec.clear();
         formatter.format(&instruction, &mut output);
@@ -177,10 +181,6 @@ pub fn disassemble(
         }
 
         println!();
-
-        if c == size {
-            break;
-        }
 
         c += 1;
     }
