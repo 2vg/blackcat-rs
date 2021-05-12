@@ -1,4 +1,4 @@
-pub use winapi::{
+pub(crate) use winapi::{
     ctypes::c_char,
     shared::{
         minwindef::{DWORD, FALSE, LPVOID},
