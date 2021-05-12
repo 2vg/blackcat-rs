@@ -7,11 +7,14 @@ use iced_x86::{
 use std::io::prelude::*;
 use std::{fs::File, ptr::null_mut};
 use winapi::um::synchapi::WaitForSingleObject;
-use wuhu::{
-    self,
-    prelude::{
-        CreateRemoteThread, OpenProcess, LPVOID, PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
-        PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
+use winapi::{
+    shared::minwindef::LPVOID,
+    um::{
+        processthreadsapi::{CreateRemoteThread, OpenProcess},
+        winnt::{
+            PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION,
+            PROCESS_VM_READ, PROCESS_VM_WRITE,
+        },
     },
 };
 
@@ -143,7 +146,7 @@ pub fn disassemble(
 
         let offset = instruction.ip() + start_offset;
 
-        if instruction.ip() >  offset && !address_found {
+        if instruction.ip() > offset && !address_found {
             bail!("start_offset has passed. check addres is correct.");
         } else if instruction.ip() < offset {
             continue;
