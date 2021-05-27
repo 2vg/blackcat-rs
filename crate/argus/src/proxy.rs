@@ -53,9 +53,7 @@ impl Server {
             task::spawn(async move {
                 match handle_conn(s, stream).await {
                     Ok(()) => {}
-                    Err(e) => {
-                        dbg!(e);
-                    }
+                    Err(_e) => {}
                 }
             });
         }
@@ -149,8 +147,11 @@ async fn handle_finalize(
     target_stream: impl Read + Write + Clone + Send + Sync + Unpin + 'static,
 ) -> Result<()> {
     async_h1::accept(client_stream.clone(), |req| async {
-        let req = (server.edit_request)(req).await?;
-        let res_result = async_h1::connect(target_stream.clone(), req.clone()).await;
+        let mut req = (server.edit_request)(req).await?;
+        let body = req.body_string().await?;
+        let mut new_req = req.clone();
+        new_req.set_body(body);
+        let res_result = async_h1::connect(target_stream.clone(), new_req).await;
         if res_result.is_err() {
             Ok((server.edit_response)((req, Response::new(StatusCode::BadRequest))).await?)
         } else {
@@ -174,7 +175,6 @@ async fn read_request(
             }
         },
         Err(e) => {
-            dbg!(&e);
             bail!("{}", e)
         }
     };
