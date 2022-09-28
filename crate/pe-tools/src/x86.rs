@@ -1,16 +1,14 @@
 #[allow(non_snake_case)]
 use crate::shared::*;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, arch::asm};
 use std::mem::size_of;
 use std::ptr::null_mut;
 
 use anyhow::*;
 use goblin::pe::{optional_header::OptionalHeader, section_table::SectionTable, PE};
-use ntapi::{
-    ntwow64::{LDR_DATA_TABLE_ENTRY32, PEB32, PEB_LDR_DATA32},
-    winapi_local::um::winnt::__readfsdword,
-};
+use ntapi::winapi::shared::ntdef::NULL;
+use ntapi::{ntwow64::{LDR_DATA_TABLE_ENTRY32, PEB32, PEB_LDR_DATA32}};
 use winapi::{
     ctypes::c_void,
     shared::{
@@ -87,11 +85,12 @@ impl PEContainer<'_> {
             self.old_image_base_address = (*nt_header).OptionalHeader.ImageBase as _;
             (*nt_header).OptionalHeader.ImageBase = new_image_base_address as _;
         };
+        let slice = unsafe { std::slice::from_raw_parts(self.first_pointer as *const u8, 1024 * 1024 * 1024) } as _;
         self.pe = if is_memory {
             let opts = goblin::pe::options::ParseOptions { resolve_rva: false };
-            goblin::pe::PE::parse_with_opts(ptr_to_u8slice(self.first_pointer), &opts)?
+            goblin::pe::PE::parse_with_opts(slice, &opts)?
         } else {
-            goblin::pe::PE::parse(ptr_to_u8slice(self.first_pointer))?
+            goblin::pe::PE::parse(slice)?
         };
         Ok(())
     }
@@ -285,7 +284,7 @@ impl PEContainer<'_> {
             match e.name {
                 Some(symbol) => {
                     if symbol == function_name {
-                        return Ok((self.image_base_address() as usize + e.offset) as _);
+                        return Ok((self.image_base_address() as usize + e.offset.unwrap_or_default()) as _);
                     }
                 }
                 None => {}
@@ -431,7 +430,12 @@ pub fn search_proc_address_from_loaded_module(
 ) -> anyhow::Result<*mut c_void> {
     unsafe {
         let function_name = function_name.into();
-        let ppeb = __readfsdword(0x30) as *mut PEB32;
+        let mut ppeb = NULL as *mut PEB32;
+
+        asm!(
+            "mov {}, fs:[0x30]",
+            out(reg) ppeb,
+        );
 
         let p_peb_ldr_data = (*ppeb).Ldr as *mut PEB_LDR_DATA32;
         let mut module_list =
@@ -462,7 +466,7 @@ pub fn search_proc_address_from_loaded_module(
                 match e.name {
                     Some(symbol) => {
                         if symbol == function_name {
-                            return Ok((dll_base as usize + e.offset) as _);
+                            return Ok((dll_base as usize + e.offset.unwrap_or_default()) as _);
                         }
                     }
                     None => {}
@@ -477,7 +481,12 @@ pub fn search_proc_address_from_loaded_module(
 pub fn get_syscall_table() -> anyhow::Result<HashMap<String, usize>> {
     unsafe {
         let mut function_table = HashMap::new();
-        let ppeb = __readfsdword(0x30) as *mut PEB32;
+        let mut ppeb = NULL as *mut PEB32;
+
+        asm!(
+            "mov {}, fs:[0x30]",
+            out(reg) ppeb,
+        );
 
         let p_peb_ldr_data = (*ppeb).Ldr as *mut PEB_LDR_DATA32;
         let mut module_list =
@@ -528,7 +537,7 @@ pub fn get_syscall_table() -> anyhow::Result<HashMap<String, usize>> {
                 }
             }
 
-            let mut function_table_vec: Vec<(String, usize)> = function_table.into_iter().collect();
+            let mut function_table_vec: Vec<(String, Option<usize>)> = function_table.into_iter().collect();
             function_table_vec.sort_by(|x, y| x.1.cmp(&y.1));
 
             let mut syscall_table = HashMap::new();
